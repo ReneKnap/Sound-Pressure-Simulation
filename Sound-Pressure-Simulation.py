@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from matplotlib.widgets import Slider, Button
 from matplotlib.patches import Circle
+import tkinter as tk
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 
 posStepSize = 0.05
@@ -25,11 +27,21 @@ speakerPosY = numDiscretePosX // 2
 frequency = 500  # in Hz
 omega = 2 * np.pi * frequency
 
-
 animRunning = True
 currentPhase = 0 
 
-fig, ax = plt.subplots()
+dpi = 100 
+figWidth = 400 / dpi
+figHeight = 300 / dpi
+
+root = tk.Tk()
+root.title('Sound Pressure Simulation')
+root.geometry("1050x900+10+10")
+
+frameAnimation = tk.Frame(root, width=400, height=300)
+frameAnimation.pack(side=tk.TOP, pady=10)
+
+fig, ax = plt.subplots(figsize=(figWidth, figHeight), dpi=dpi)
 image = ax.imshow(pressureField, cmap='viridis', vmin=-0.1, vmax=0.1, animated=True)
 ax.set_title('Sound Pressure Simulation')
 ax.set_xlabel('X in meter')
@@ -49,14 +61,27 @@ speakerCircle = Circle(
     (speakerPosY, speakerPosX), radius=speakerSize / posStepSize / 2, color='orange', fill=False, linewidth=2)
 ax.add_patch(speakerCircle)
 
-axFrequency = plt.axes([0.2, 0.01, 0.4, 0.03], facecolor='lightgoldenrodyellow')
-sliderFrequency = Slider(axFrequency, 'Frequency', 10, 1000, valinit=frequency)
+canvas = FigureCanvasTkAgg(fig, master=frameAnimation)
+canvas.draw()
+canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.NONE, expand=False)
+canvas.get_tk_widget().pack_propagate(0)
+canvas.get_tk_widget().config(width=1000, height=750)
 
-axReset = plt.axes([0.72, 0.01, 0.1, 0.04])
-buttonReset = Button(axReset, 'Reset', color='lightgoldenrodyellow', hovercolor='0.975')
+frameControls = tk.Frame(root)
+frameControls.pack(side=tk.TOP, pady=10)
 
-axStop = plt.axes([0.88, 0.01, 0.1, 0.04])
-buttonStop = Button(axStop, 'Stop', color='lightgoldenrodyellow', hovercolor='0.975')
+frequencyLabel = tk.Label(frameControls, text="Frequency (Hz)")
+frequencyLabel.pack(side=tk.LEFT, padx=5)
+
+frequencySlider = tk.Scale(frameControls, from_=10, to=1000, orient=tk.HORIZONTAL, length=200)
+frequencySlider.set(frequency)
+frequencySlider.pack(side=tk.LEFT, padx=5)
+
+resetButton = tk.Button(frameControls, text="Reset", command=lambda: reset(None))
+resetButton.pack(side=tk.LEFT, padx=15)
+
+stopButton = tk.Button(frameControls, text="Stop", command=lambda: stop(None))
+stopButton.pack(side=tk.LEFT, padx=15)
 
 
 def calcFiniteDifferenceTimeDomain(pressureField, velocityFieldX, velocityFieldY, speakerSize, currentPhase):
@@ -104,7 +129,7 @@ def update(frame):
 
 def updateFrequency(val):
     global frequency, omega
-    frequency = sliderFrequency.val
+    frequency = frequencySlider.get()
     omega = 2 * np.pi * frequency
 
 def reset(event):
@@ -118,13 +143,13 @@ def stop(event):
     global animRunning
     animRunning = not animRunning
     if animRunning:
-        buttonStop.label.set_text('Stop')
+        stopButton.config(text='Stop')
     else:
-        buttonStop.label.set_text('Start')
+        stopButton.config(text='Start')
 
-sliderFrequency.on_changed(updateFrequency)
-buttonReset.on_clicked(reset)
-buttonStop.on_clicked(stop)
 
-animation = FuncAnimation(fig, update, blit=True, interval=2, cache_frame_data=False)
-plt.show()
+frequencySlider.bind("<Motion>", updateFrequency) 
+
+animation = FuncAnimation(fig, update, blit=True, interval=1, cache_frame_data=False)
+
+root.mainloop()
