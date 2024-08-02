@@ -10,6 +10,8 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 posStepSize = 0.05
 timeStepSize = 0.00005
 SPEED_OF_SOUND = 346.3  # speed of sound in air in m/s at 25°C
+REFERENCE_PRESSURE = 20e-6  # reference pressure in Pascals for 0 dB
+
 
 roomWidth = 5.0  # in meters
 roomHeight = 3.6   # in meters
@@ -26,6 +28,7 @@ speakerPosX = numDiscretePosY // 4
 speakerPosY = numDiscretePosX // 2
 frequency = 500  # in Hz
 omega = 2 * np.pi * frequency
+volume = 60  # in dB
 
 animRunning = True
 currentPhase = 0 
@@ -77,6 +80,13 @@ frequencySlider = tk.Scale(frameControls, from_=10, to=1000, orient=tk.HORIZONTA
 frequencySlider.set(frequency)
 frequencySlider.pack(side=tk.LEFT, padx=5)
 
+volumeLabel = tk.Label(frameControls, text="Volume (dB)")
+volumeLabel.pack(side=tk.LEFT, padx=5)
+
+volumeSlider = tk.Scale(frameControls, from_=0, to=120, orient=tk.HORIZONTAL, length=200)
+volumeSlider.set(volume) 
+volumeSlider.pack(side=tk.LEFT, padx=5)
+
 resetButton = tk.Button(frameControls, text="Reset", command=lambda: reset(None))
 resetButton.pack(side=tk.LEFT, padx=15)
 
@@ -84,7 +94,7 @@ stopButton = tk.Button(frameControls, text="Stop", command=lambda: stop(None))
 stopButton.pack(side=tk.LEFT, padx=15)
 
 
-def calcFiniteDifferenceTimeDomain(pressureField, velocityFieldX, velocityFieldY, speakerSize, currentPhase):
+def calcFiniteDifferenceTimeDomain(pressureField, velocityFieldX, velocityFieldY, speakerSize, volume, currentPhase):
     # update velocity fields
     velocityFieldX[1:, :] -= timeStepSize / posStepSize * (pressureField[1:, :] - pressureField[:-1, :])
     velocityFieldY[:, 1:] -= timeStepSize / posStepSize * (pressureField[:, 1:] - pressureField[:, :-1])
@@ -99,26 +109,28 @@ def calcFiniteDifferenceTimeDomain(pressureField, velocityFieldX, velocityFieldY
     pressureField[:, :-1] -= timeStepSize * SPEED_OF_SOUND**2 / posStepSize * (velocityFieldY[:, 1:] - velocityFieldY[:, :-1])
 
     # simple sound source
-    updateSpeakerPressure(pressureField, speakerPosX, speakerPosY, speakerSize, currentPhase)
+    updateSpeakerPressure(pressureField, speakerPosX, speakerPosY, speakerSize, volume, currentPhase)
     currentPhase += omega * timeStepSize
     currentPhase %= 2 * np.pi
 
     return pressureField, velocityFieldX, velocityFieldY, currentPhase
 
-def updateSpeakerPressure(pressureField, centerX, centerY, size, phase):
+def updateSpeakerPressure(pressureField, centerX, centerY, size, volume, phase):
+    amplitude = REFERENCE_PRESSURE * (10 ** (volume / 20))
+
     radius = int(size / posStepSize / 2)
     for y in range(centerX - radius, centerX + radius):
         for x in range(centerY - radius, centerY + radius):
             if 0 <= x < numDiscretePosX and 0 <= y < numDiscretePosY:
                 if (x - centerY)**2 + (y - centerX)**2 <= radius**2:
-                    pressureField[y, x] += np.sin(phase)
+                    pressureField[y, x] += amplitude * np.sin(phase)
 
 def update(frame):
-    global pressureField, velocityFieldX, velocityFieldY, animRunning, speakerSize, currentPhase
+    global pressureField, velocityFieldX, velocityFieldY, animRunning, speakerSize, volume, currentPhase
 
     if animRunning:
         pressureField, velocityFieldX, velocityFieldY, currentPhase = calcFiniteDifferenceTimeDomain(
-            pressureField, velocityFieldX, velocityFieldY, speakerSize, currentPhase)
+            pressureField, velocityFieldX, velocityFieldY, speakerSize, volume, currentPhase)
 
         image.set_array(pressureField[:-1, :-1])
 
@@ -131,6 +143,10 @@ def updateFrequency(val):
     global frequency, omega
     frequency = frequencySlider.get()
     omega = 2 * np.pi * frequency
+
+def updateVolume(val):
+    global volume
+    volume = volumeSlider.get()
 
 def reset(event):
     global pressureField, velocityFieldX, velocityFieldY, currentPhase
@@ -148,7 +164,8 @@ def stop(event):
         stopButton.config(text='Start')
 
 
-frequencySlider.bind("<Motion>", updateFrequency) 
+frequencySlider.bind("<B1-Motion>", updateFrequency) 
+volumeSlider.bind("<B1-Motion>", updateVolume) 
 
 animation = FuncAnimation(fig, update, blit=True, interval=1, cache_frame_data=False)
 
