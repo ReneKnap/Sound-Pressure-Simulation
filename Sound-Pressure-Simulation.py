@@ -118,11 +118,12 @@ def calcFiniteDifferenceTimeDomain(pressureField, velocityFieldX, velocityFieldY
 def updateSpeakerPressure(pressureField, centerX, centerY, size, volume, phase):
     amplitude = REFERENCE_PRESSURE * (10 ** (volume / 20))
 
-    radius = int(size / posStepSize / 2)
-    for y in range(centerX - radius, centerX + radius):
-        for x in range(centerY - radius, centerY + radius):
+    radius = size / (2 * posStepSize)
+    for y in range(centerX - int(radius) - 0, centerX + int(radius) + 0):
+        for x in range(centerY - int(radius) - 0, centerY + int(radius) + 0):
             if 0 <= x < numDiscretePosX and 0 <= y < numDiscretePosY:
-                if (x - centerY)**2 + (y - centerX)**2 <= radius**2:
+                distance = np.sqrt((x - centerY) ** 2 + (y - centerX) ** 2)
+                if distance <= radius:
                     pressureField[y, x] += amplitude * np.sin(phase)
 
 def update(frame):
