@@ -19,18 +19,18 @@ pressureField = np.zeros((numDiscretePosY, numDiscretePosX))
 velocityFieldX = np.zeros((numDiscretePosY, numDiscretePosX))
 velocityFieldY = np.zeros((numDiscretePosY, numDiscretePosX))
 
-sourcePosX = numDiscretePosY // 2
+sourcePosX = numDiscretePosY // 4
 sourcePosY = numDiscretePosX // 2
-frequency = 100  # in Hz
+frequency = 500  # in Hz
 omega = 2 * np.pi * frequency
 
 
 animRunning = True
-
+currentPhase = 0 
 
 fig, ax = plt.subplots()
 image = ax.imshow(pressureField, cmap='viridis', vmin=-0.1, vmax=0.1, animated=True)
-ax.set_title('Sound PressureField Simulation')
+ax.set_title('Sound Pressure Simulation')
 ax.set_xlabel('X in meter')
 ax.set_ylabel('Y in meter')
 
@@ -57,7 +57,7 @@ buttonStop = Button(axStop, 'Stop', color='lightgoldenrodyellow', hovercolor='0.
 
 
 
-def calcFiniteDifferenceTimeDomain(pressureField, velocityFieldX, velocityFieldY, frame):
+def calcFiniteDifferenceTimeDomain(pressureField, velocityFieldX, velocityFieldY, currentPhase):
     # update velocity fields
     velocityFieldX[1:, :] -= timeStepSize / posStepSize * (pressureField[1:, :] - pressureField[:-1, :])
     velocityFieldY[:, 1:] -= timeStepSize / posStepSize * (pressureField[:, 1:] - pressureField[:, :-1])
@@ -72,15 +72,19 @@ def calcFiniteDifferenceTimeDomain(pressureField, velocityFieldX, velocityFieldY
     pressureField[:, :-1] -= timeStepSize * SPEED_OF_SOUND**2 / posStepSize * (velocityFieldY[:, 1:] - velocityFieldY[:, :-1])
 
     # simple sound source
-    pressureField[sourcePosX, sourcePosY] += np.sin(omega * frame * timeStepSize)
-    return pressureField, velocityFieldX, velocityFieldY
+    pressureField[sourcePosX, sourcePosY] += np.sin(currentPhase)
+    currentPhase += omega * timeStepSize
+    currentPhase %= 2 * np.pi
+
+    return pressureField, velocityFieldX, velocityFieldY, currentPhase
 
 def update(frame):
-    global pressureField, velocityFieldX, velocityFieldY, animRunning
+    global pressureField, velocityFieldX, velocityFieldY, animRunning, currentPhase
+
 
     if animRunning:
-        pressureField, velocityFieldX, velocityFieldY = calcFiniteDifferenceTimeDomain(
-            pressureField, velocityFieldX, velocityFieldY, frame)
+        pressureField, velocityFieldX, velocityFieldY, currentPhase = calcFiniteDifferenceTimeDomain(
+            pressureField, velocityFieldX, velocityFieldY, currentPhase)
 
         image.set_array(pressureField[:-1, :-1])
     return [image]
