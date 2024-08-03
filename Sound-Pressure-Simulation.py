@@ -12,26 +12,29 @@ timeStepSize = 0.00005
 SPEED_OF_SOUND = 346.3  # speed of sound in air in m/s at 25°C
 REFERENCE_PRESSURE = 20e-6  # reference pressure in Pascals for 0 dB
 
-
 roomWidth = 5.0  # in meters
 roomHeight = 3.6   # in meters
+wallThickness = 0.2
 
-numDiscretePosX = int(roomWidth / posStepSize) + 1
-numDiscretePosY = int(roomHeight / posStepSize) + 1
+# room size plus 2 times wall thickness
+numDiscretePosX = int(roomWidth / posStepSize) + 1 + int(wallThickness / posStepSize) * 2
+numDiscretePosY = int(roomHeight / posStepSize) + 1 + int(wallThickness / posStepSize) * 2
 
 pressureField = np.zeros((numDiscretePosY, numDiscretePosX))
 velocityFieldX = np.zeros((numDiscretePosY, numDiscretePosX))
 velocityFieldY = np.zeros((numDiscretePosY, numDiscretePosX))
 
 speakerSize = 0.3  # in meters
-speakerPosX = numDiscretePosY // 4
+speakerPosX = numDiscretePosY // 2
 speakerPosY = numDiscretePosX // 2
 frequency = 500  # in Hz
 omega = 2 * np.pi * frequency
 volume = 60  # in dB
 
+wallReflectionCoefficient = 0.8 # Proportion of reflection (0.0 to 1.0)
+
 animRunning = True
-currentPhase = 0 
+currentPhase = 0
 
 dpi = 100 
 figWidth = 400 / dpi
@@ -99,14 +102,10 @@ def calcFiniteDifferenceTimeDomain(pressureField, velocityFieldX, velocityFieldY
     velocityFieldX[1:, :] -= timeStepSize / posStepSize * (pressureField[1:, :] - pressureField[:-1, :])
     velocityFieldY[:, 1:] -= timeStepSize / posStepSize * (pressureField[:, 1:] - pressureField[:, :-1])
 
-    # reflective boundary conditions
-    velocityFieldX[0, :] = 0
-    velocityFieldX[-1, :] = 0
-    velocityFieldY[:, 0] = 0
-    velocityFieldY[:, -1] = 0
-
     pressureField[:-1, :] -= timeStepSize * SPEED_OF_SOUND**2 / posStepSize * (velocityFieldX[1:, :] - velocityFieldX[:-1, :])
     pressureField[:, :-1] -= timeStepSize * SPEED_OF_SOUND**2 / posStepSize * (velocityFieldY[:, 1:] - velocityFieldY[:, :-1])
+
+    applyBoundaryConditions(pressureField, velocityFieldX, velocityFieldY)
 
     # simple sound source
     updateSpeakerPressure(pressureField, speakerPosX, speakerPosY, speakerSize, volume, currentPhase)
@@ -114,6 +113,21 @@ def calcFiniteDifferenceTimeDomain(pressureField, velocityFieldX, velocityFieldY
     currentPhase %= 2 * np.pi
 
     return pressureField, velocityFieldX, velocityFieldY, currentPhase
+
+
+def applyBoundaryConditions(pressureField, velocityFieldX, velocityFieldY):
+    absorptionCoefficient = 1.0 - wallReflectionCoefficient
+    for i in range(int(wallThickness / posStepSize)):
+
+        pressureField[i, :] *= absorptionCoefficient
+        pressureField[-i-2, :] *= absorptionCoefficient
+        pressureField[:, i] *= absorptionCoefficient
+        pressureField[:, -i-2] *= absorptionCoefficient
+
+    velocityFieldX[0, :] = 0
+    velocityFieldX[-1, :] = 0
+    velocityFieldY[:, 0] = 0
+    velocityFieldY[:, -1] = 0
 
 def updateSpeakerPressure(pressureField, centerX, centerY, size, volume, phase):
     amplitude = REFERENCE_PRESSURE * (10 ** (volume / 20))
