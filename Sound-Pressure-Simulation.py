@@ -8,8 +8,8 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 
 posStepSize = 0.05
-timeStepSize = 0.00005
 SPEED_OF_SOUND = 346.3  # speed of sound in air in m/s at 25°C
+timeStepSize = 0.1 * posStepSize / SPEED_OF_SOUND
 REFERENCE_PRESSURE = 20e-6  # reference pressure in Pascals for 0 dB
 
 roomWidth = 5.0  # in meters
@@ -25,13 +25,14 @@ velocityFieldX = np.zeros((numDiscretePosY, numDiscretePosX))
 velocityFieldY = np.zeros((numDiscretePosY, numDiscretePosX))
 
 speakerSize = 0.3  # in meters
-speakerPosX = numDiscretePosY // 2
-speakerPosY = numDiscretePosX // 2
+speakerPosX = 10
+speakerPosY = 10
 frequency = 500  # in Hz
 omega = 2 * np.pi * frequency
 volume = 60  # in dB
 
 wallReflectionCoefficient = 0.8 # Proportion of reflection (0.0 to 1.0)
+wallAbsorptionCoefficient = 0.05 # Proportion of absorbtion (0.0 to 1.0)
 
 animRunning = True
 currentPhase = 0
@@ -116,18 +117,29 @@ def calcFiniteDifferenceTimeDomain(pressureField, velocityFieldX, velocityFieldY
 
 
 def applyBoundaryConditions(pressureField, velocityFieldX, velocityFieldY):
-    absorptionCoefficient = 1.0 - wallReflectionCoefficient
     for i in range(int(wallThickness / posStepSize)):
+        pressureField[i, :] *= 1 - wallAbsorptionCoefficient
+        pressureField[-i-2, :] *= 1 - wallAbsorptionCoefficient
+        pressureField[:, i] *= 1 - wallAbsorptionCoefficient
+        pressureField[:, -i-2] *= 1 - wallAbsorptionCoefficient
 
-        pressureField[i, :] *= absorptionCoefficient
-        pressureField[-i-2, :] *= absorptionCoefficient
-        pressureField[:, i] *= absorptionCoefficient
-        pressureField[:, -i-2] *= absorptionCoefficient
+        #velocityFieldX[i+1, :] *= 1 - 1.99 * wallReflectionCoefficient
+        #velocityFieldX[-i-2, :] *= 1 - 1.99 * wallReflectionCoefficient
+        #velocityFieldY[:, i+1] *= 1 - 1.99 * wallReflectionCoefficient
+        #velocityFieldY[:, -i-2] *= 1 - 1.99 * wallReflectionCoefficient
+
+    wallReflexionLayer = int(wallThickness / posStepSize) - 1  
+    velocityFieldX[wallReflexionLayer+1, wallReflexionLayer+1:-wallReflexionLayer-2] *= 1 - 1.99 * wallReflectionCoefficient
+    velocityFieldX[-wallReflexionLayer-2, wallReflexionLayer+1:-wallReflexionLayer-2] *= 1 - 1.99 * wallReflectionCoefficient
+    velocityFieldY[wallReflexionLayer+1:-wallReflexionLayer-2, wallReflexionLayer+1] *= 1 - 1.99 * wallReflectionCoefficient
+    velocityFieldY[wallReflexionLayer+1:-wallReflexionLayer-2, -wallReflexionLayer-2] *= 1 - 1.99 * wallReflectionCoefficient
+
 
     velocityFieldX[0, :] = 0
     velocityFieldX[-1, :] = 0
     velocityFieldY[:, 0] = 0
     velocityFieldY[:, -1] = 0
+
 
 def updateSpeakerPressure(pressureField, centerX, centerY, size, volume, phase):
     amplitude = REFERENCE_PRESSURE * (10 ** (volume / 20))
@@ -144,8 +156,9 @@ def update(frame):
     global pressureField, velocityFieldX, velocityFieldY, animRunning, speakerSize, volume, currentPhase
 
     if animRunning:
-        pressureField, velocityFieldX, velocityFieldY, currentPhase = calcFiniteDifferenceTimeDomain(
-            pressureField, velocityFieldX, velocityFieldY, speakerSize, volume, currentPhase)
+        for _ in range(4):
+            pressureField, velocityFieldX, velocityFieldY, currentPhase = calcFiniteDifferenceTimeDomain(
+                pressureField, velocityFieldX, velocityFieldY, speakerSize, volume, currentPhase)
 
         image.set_array(pressureField[:-1, :-1])
 
