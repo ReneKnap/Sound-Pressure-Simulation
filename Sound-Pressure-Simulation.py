@@ -80,12 +80,20 @@ frameControls.pack(side=tk.TOP, pady=10)
 frequencyLabel = tk.Label(frameControls, text="Frequency (Hz)")
 frequencyLabel.pack(side=tk.LEFT, padx=5)
 
+frequencyEntry = tk.Entry(frameControls, width=5)
+frequencyEntry.insert(0, str(frequency))
+frequencyEntry.pack(side=tk.LEFT, padx=5)
+
 frequencySlider = tk.Scale(frameControls, from_=10, to=1000, orient=tk.HORIZONTAL, length=200)
 frequencySlider.set(frequency)
 frequencySlider.pack(side=tk.LEFT, padx=5)
 
 volumeLabel = tk.Label(frameControls, text="Volume (dB)")
 volumeLabel.pack(side=tk.LEFT, padx=5)
+
+volumeEntry = tk.Entry(frameControls, width=5)
+volumeEntry.insert(0, str(volume))
+volumeEntry.pack(side=tk.LEFT, padx=5)
 
 volumeSlider = tk.Scale(frameControls, from_=0, to=120, orient=tk.HORIZONTAL, length=200)
 volumeSlider.set(volume) 
@@ -123,17 +131,11 @@ def applyBoundaryConditions(pressureField, velocityFieldX, velocityFieldY):
         pressureField[:, i] *= 1 - wallAbsorptionCoefficient
         pressureField[:, -i-2] *= 1 - wallAbsorptionCoefficient
 
-        #velocityFieldX[i+1, :] *= 1 - 1.99 * wallReflectionCoefficient
-        #velocityFieldX[-i-2, :] *= 1 - 1.99 * wallReflectionCoefficient
-        #velocityFieldY[:, i+1] *= 1 - 1.99 * wallReflectionCoefficient
-        #velocityFieldY[:, -i-2] *= 1 - 1.99 * wallReflectionCoefficient
-
     wallReflexionLayer = int(wallThickness / posStepSize) - 1  
     velocityFieldX[wallReflexionLayer+1, wallReflexionLayer+1:-wallReflexionLayer-2] *= 1 - 1.99 * wallReflectionCoefficient
     velocityFieldX[-wallReflexionLayer-2, wallReflexionLayer+1:-wallReflexionLayer-2] *= 1 - 1.99 * wallReflectionCoefficient
     velocityFieldY[wallReflexionLayer+1:-wallReflexionLayer-2, wallReflexionLayer+1] *= 1 - 1.99 * wallReflectionCoefficient
     velocityFieldY[wallReflexionLayer+1:-wallReflexionLayer-2, -wallReflexionLayer-2] *= 1 - 1.99 * wallReflectionCoefficient
-
 
     velocityFieldX[0, :] = 0
     velocityFieldX[-1, :] = 0
@@ -171,10 +173,33 @@ def updateFrequency(val):
     global frequency, omega
     frequency = frequencySlider.get()
     omega = 2 * np.pi * frequency
+    frequencyEntry.delete(0, tk.END)
+    frequencyEntry.insert(0, str(frequency))
 
 def updateVolume(val):
     global volume
     volume = volumeSlider.get()
+    volumeEntry.delete(0, tk.END)
+    volumeEntry.insert(0, str(volume))
+
+def updateFrequencyFromEntry(event):
+    try:
+        val = int(frequencyEntry.get())
+        if 10 <= val <= 1000:
+            frequencySlider.set(val)
+            updateFrequency(None)
+    except ValueError:
+        pass
+
+
+def updateVolumeFromEntry(event):
+    try:
+        val = int(volumeEntry.get())
+        if 0 <= val <= 120:
+            volumeSlider.set(val)
+            updateVolume(None)
+    except ValueError:
+        pass
 
 def reset(event):
     global pressureField, velocityFieldX, velocityFieldY, currentPhase
@@ -193,7 +218,9 @@ def stop(event):
 
 
 frequencySlider.bind("<B1-Motion>", updateFrequency) 
-volumeSlider.bind("<B1-Motion>", updateVolume) 
+volumeSlider.bind("<B1-Motion>", updateVolume)
+frequencyEntry.bind("<Return>", updateFrequencyFromEntry)
+volumeEntry.bind("<Return>", updateVolumeFromEntry)
 
 animation = FuncAnimation(fig, update, blit=True, interval=1, cache_frame_data=False)
 
