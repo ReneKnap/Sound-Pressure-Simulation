@@ -51,7 +51,7 @@ frameAnimation = tk.Frame(root, width=400, height=300)
 frameAnimation.pack(side=tk.TOP, pady=10)
 
 fig, ax = plt.subplots(figsize=(figWidth, figHeight), dpi=dpi)
-image = ax.imshow(pressureField, cmap='viridis', vmin=-0.1, vmax=0.1, animated=True)
+image = ax.imshow(pressureField, cmap='viridis', vmin=-0.25, vmax=0.25, animated=True)
 ax.set_title('Sound Pressure Simulation')
 ax.set_xlabel('X in meter')
 ax.set_ylabel('Y in meter')
@@ -82,6 +82,9 @@ speakerCircle = Circle(
 ax.add_patch(speakerCircle)
 
 timeAnnotation = ax.text(0.05, 0.99, '', transform=ax.transAxes, color='white', fontsize=12, weight='bold', va='top')
+
+cbar = fig.colorbar(image, ax=ax, orientation='vertical')
+cbar.set_label('Druck (Pa)')
 
 canvas = FigureCanvasTkAgg(fig, master=frameAnimation)
 canvas.draw()
