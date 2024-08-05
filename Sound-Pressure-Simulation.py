@@ -12,8 +12,8 @@ SPEED_OF_SOUND = 346.3  # Speed of sound in air in m/s at 25°C
 timeStepSize = 0.1 * posStepSize / SPEED_OF_SOUND
 REFERENCE_PRESSURE = 20e-6  # Reference pressure in Pascals for 0 dB
 
-roomWidth = 5.0  # Meters
-roomHeight = 3.6   # Meters
+roomWidth = 5.0  # m
+roomHeight = 3.6   # m
 wallThickness = 0.2
 
 # Room size plus 2 times wall thickness
@@ -24,9 +24,9 @@ pressureField = np.zeros((numDiscretePosY, numDiscretePosX))
 velocityFieldX = np.zeros((numDiscretePosY, numDiscretePosX))
 velocityFieldY = np.zeros((numDiscretePosY, numDiscretePosX))
 
-speakerSize = 0.3  # Meters
-speakerPosX = 0.5  # Meters
-speakerPosY = 0.5  # Meters
+speakerSize = 0.3  # m
+speakerPosX = 0.5  # m
+speakerPosY = 0.5  # m
 speakerFrequency = 500  # Hz
 speakerVolume = 60  # dB
 omega = 2 * np.pi * speakerFrequency
@@ -36,6 +36,7 @@ wallPressureAbsorptionCoefficient = 0.05 # Proportion of pressure absorption (0.
 wallVelocityAbsorptionCoefficient = 0.05 # Proportion of velocity absorption (0.0 to 1.0)
 
 animRunning = True
+simulatedTime = 0.0  # ms
 currentPhase = 0
 
 dpi = 100 
@@ -79,6 +80,8 @@ for wall in wall_rects:
 speakerCircle = Circle(
     (speakerPosX / posStepSize , speakerPosY / posStepSize), radius=speakerSize / posStepSize / 2, color='orange', fill=False, linewidth=2)
 ax.add_patch(speakerCircle)
+
+timeAnnotation = ax.text(0.05, 0.99, '', transform=ax.transAxes, color='white', fontsize=12, weight='bold', va='top')
 
 canvas = FigureCanvasTkAgg(fig, master=frameAnimation)
 canvas.draw()
@@ -175,14 +178,16 @@ def update_simulation(pressureField, velocityFieldX, velocityFieldY, currentPhas
     return currentPhase
 
 def update(frame):
-    global pressureField, velocityFieldX, velocityFieldY, animRunning, currentPhase
+    global pressureField, velocityFieldX, velocityFieldY, animRunning, currentPhase, simulatedTime
 
     if animRunning:
         for _ in range(4):
             currentPhase = update_simulation(pressureField, velocityFieldX, velocityFieldY, currentPhase)
+            simulatedTime += timeStepSize * 1000
 
         image.set_array(pressureField[:-1, :-1])
-    return [image, speakerCircle] + wall_rects
+        timeAnnotation.set_text(f'Time: {simulatedTime:.2f} ms')
+    return [image, speakerCircle, timeAnnotation] + wall_rects
 
 def updateFrequency(val):
     global speakerFrequency, omega
@@ -222,6 +227,7 @@ def resetSimulation(event):
     velocityFieldX = np.zeros((numDiscretePosY, numDiscretePosX))
     velocityFieldY = np.zeros((numDiscretePosY, numDiscretePosX))
     currentPhase = 0
+    simulatedTime = 0.0
 
 def toggleSimulation(event):
     global animRunning
