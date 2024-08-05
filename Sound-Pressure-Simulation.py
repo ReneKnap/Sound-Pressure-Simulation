@@ -100,29 +100,20 @@ volumeSlider = tk.Scale(frameControls, from_=0, to=120, orient=tk.HORIZONTAL, le
 volumeSlider.set(volume) 
 volumeSlider.pack(side=tk.LEFT, padx=5)
 
-resetButton = tk.Button(frameControls, text="Reset", command=lambda: reset(None))
+resetButton = tk.Button(frameControls, text="Reset", command=lambda: resetSimulation(None))
 resetButton.pack(side=tk.LEFT, padx=15)
 
-stopButton = tk.Button(frameControls, text="Stop", command=lambda: stop(None))
+stopButton = tk.Button(frameControls, text="Stop", command=lambda: toggleSimulation(None))
 stopButton.pack(side=tk.LEFT, padx=15)
 
 
-def calcFiniteDifferenceTimeDomain(pressureField, velocityFieldX, velocityFieldY, speakerSize, volume, currentPhase):
+def calcFiniteDifferenceTimeDomain(pressureField, velocityFieldX, velocityFieldY):
     # update velocity fields
     velocityFieldX[1:, :] -= timeStepSize / posStepSize * (pressureField[1:, :] - pressureField[:-1, :])
     velocityFieldY[:, 1:] -= timeStepSize / posStepSize * (pressureField[:, 1:] - pressureField[:, :-1])
 
     pressureField[:-1, :] -= timeStepSize * SPEED_OF_SOUND**2 / posStepSize * (velocityFieldX[1:, :] - velocityFieldX[:-1, :])
     pressureField[:, :-1] -= timeStepSize * SPEED_OF_SOUND**2 / posStepSize * (velocityFieldY[:, 1:] - velocityFieldY[:, :-1])
-
-    applyBoundaryConditions(pressureField, velocityFieldX, velocityFieldY)
-
-    # simple sound source
-    updateSpeakerPressure(pressureField, speakerPosX, speakerPosY, speakerSize, volume, currentPhase)
-    currentPhase += omega * timeStepSize
-    currentPhase %= 2 * np.pi
-
-    return pressureField, velocityFieldX, velocityFieldY, currentPhase
 
 
 def applyBoundaryConditions(pressureField, velocityFieldX, velocityFieldY):
@@ -147,35 +138,42 @@ def applyBoundaryConditions(pressureField, velocityFieldX, velocityFieldY):
     velocityFieldY[wallReflexionLayer+1:-wallReflexionLayer-2, wallReflexionLayer+1] *= 1 - 1.99 * wallReflectionCoefficient
     velocityFieldY[wallReflexionLayer+1:-wallReflexionLayer-2, -wallReflexionLayer-2] *= 1 - 1.99 * wallReflectionCoefficient
 
+    velocityFieldX[0, :] = 0
+    velocityFieldX[-1, :] = 0
+    velocityFieldY[:, 0] = 0
+    velocityFieldY[:, -1] = 0
 
-    #velocityFieldX[0, :] = 0
-    #velocityFieldX[-1, :] = 0
-    #velocityFieldY[:, 0] = 0
-    #velocityFieldY[:, -1] = 0
-
-
-def updateSpeakerPressure(pressureField, centerX, centerY, size, volume, phase):
+def updateSpeakerPressure(pressureField, phase):
     amplitude = REFERENCE_PRESSURE * (10 ** (volume / 20))
+    radius = speakerSize / (2 * posStepSize)
 
-    radius = size / (2 * posStepSize)
-    for y in range(centerX - int(radius) - 0, centerX + int(radius) + 0):
-        for x in range(centerY - int(radius) - 0, centerY + int(radius) + 0):
+    for y in range(speakerPosX - int(radius) - 0, speakerPosX + int(radius) + 0):
+        for x in range(speakerPosY - int(radius) - 0, speakerPosY + int(radius) + 0):
             if 0 <= x < numDiscretePosX and 0 <= y < numDiscretePosY:
-                distance = np.sqrt((x - centerY) ** 2 + (y - centerX) ** 2)
+                distance = np.sqrt((x - speakerPosY) ** 2 + (y - speakerPosX) ** 2)
                 if distance <= radius:
                     pressureField[y, x] += amplitude * np.sin(phase)
 
+def update_simulation(pressureField, velocityFieldX, velocityFieldY, currentPhase):
+    calcFiniteDifferenceTimeDomain(pressureField, velocityFieldX, velocityFieldY)
+    applyBoundaryConditions(pressureField, velocityFieldX, velocityFieldY)
+    pressureField = updateSpeakerPressure(pressureField, currentPhase)
+
+    currentPhase += omega * timeStepSize
+    currentPhase %= 2 * np.pi
+
+    return currentPhase
+
 def update(frame):
-    global pressureField, velocityFieldX, velocityFieldY, animRunning, speakerSize, volume, currentPhase
+    global pressureField, velocityFieldX, velocityFieldY, animRunning, currentPhase
 
     if animRunning:
         for _ in range(4):
-            pressureField, velocityFieldX, velocityFieldY, currentPhase = calcFiniteDifferenceTimeDomain(
-                pressureField, velocityFieldX, velocityFieldY, speakerSize, volume, currentPhase)
+            currentPhase = update_simulation(pressureField, velocityFieldX, velocityFieldY, currentPhase)
 
         image.set_array(pressureField[:-1, :-1])
 
-        # draw Speaker
+        # Draw Speaker
         speakerCircle.set_radius(speakerSize / posStepSize / 2)
         ax.add_patch(speakerCircle)
     return [image, speakerCircle]
@@ -187,39 +185,39 @@ def updateFrequency(val):
     frequencyEntry.delete(0, tk.END)
     frequencyEntry.insert(0, str(frequency))
 
-def updateVolume(val):
-    global volume
-    volume = volumeSlider.get()
-    volumeEntry.delete(0, tk.END)
-    volumeEntry.insert(0, str(volume))
-
 def updateFrequencyFromEntry(event):
     try:
-        val = int(frequencyEntry.get())
+        val = frequencyEntry.get()
         if 10 <= val <= 1000:
             frequencySlider.set(val)
             updateFrequency(None)
     except ValueError:
         pass
 
+def updateVolume(val):
+    global volume
+    volume = volumeSlider.get()
+    volumeEntry.delete(0, tk.END)
+    volumeEntry.insert(0, str(volume))
+
 
 def updateVolumeFromEntry(event):
     try:
-        val = int(volumeEntry.get())
+        val = volumeEntry.get()
         if 0 <= val <= 120:
             volumeSlider.set(val)
             updateVolume(None)
     except ValueError:
         pass
 
-def reset(event):
+def resetSimulation(event):
     global pressureField, velocityFieldX, velocityFieldY, currentPhase
     pressureField = np.zeros((numDiscretePosY, numDiscretePosX))
     velocityFieldX = np.zeros((numDiscretePosY, numDiscretePosX))
     velocityFieldY = np.zeros((numDiscretePosY, numDiscretePosX))
     currentPhase = 0
 
-def stop(event):
+def toggleSimulation(event):
     global animRunning
     animRunning = not animRunning
     if animRunning:
