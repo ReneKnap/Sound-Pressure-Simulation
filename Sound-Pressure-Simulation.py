@@ -32,7 +32,8 @@ omega = 2 * np.pi * frequency
 volume = 60  # in dB
 
 wallReflectionCoefficient = 0.8 # Proportion of reflection (0.0 to 1.0)
-wallAbsorptionCoefficient = 0.05 # Proportion of absorbtion (0.0 to 1.0)
+wallPressureAbsorptionCoefficient = 0.05 # Proportion of absorbtion (0.0 to 1.0)
+wallVelocityAbsorptionCoefficient = 0.05 # Proportion of absorbtion (0.0 to 1.0)
 
 animRunning = True
 currentPhase = 0
@@ -126,10 +127,19 @@ def calcFiniteDifferenceTimeDomain(pressureField, velocityFieldX, velocityFieldY
 
 def applyBoundaryConditions(pressureField, velocityFieldX, velocityFieldY):
     for i in range(int(wallThickness / posStepSize)):
-        pressureField[i, :] *= 1 - wallAbsorptionCoefficient
-        pressureField[-i-2, :] *= 1 - wallAbsorptionCoefficient
-        pressureField[:, i] *= 1 - wallAbsorptionCoefficient
-        pressureField[:, -i-2] *= 1 - wallAbsorptionCoefficient
+        pressureField[i, :] *= 1 - wallPressureAbsorptionCoefficient
+        pressureField[-i-2, :] *= 1 - wallPressureAbsorptionCoefficient
+        pressureField[:, i] *= 1 - wallPressureAbsorptionCoefficient
+        pressureField[:, -i-2] *= 1 - wallPressureAbsorptionCoefficient
+
+        velocityFieldX[i, :] *= 1 - wallVelocityAbsorptionCoefficient
+        velocityFieldX[-i-1, :] *= 1 - wallVelocityAbsorptionCoefficient
+        velocityFieldX[:, i] *= 1 - wallVelocityAbsorptionCoefficient
+        velocityFieldX[:, -i-1] *= 1 - wallVelocityAbsorptionCoefficient
+        velocityFieldY[i, :] *= 1 - wallVelocityAbsorptionCoefficient
+        velocityFieldY[-i-1, :] *= 1 - wallVelocityAbsorptionCoefficient
+        velocityFieldY[:, i] *= 1 - wallVelocityAbsorptionCoefficient
+        velocityFieldY[:, -i-1] *= 1 - wallVelocityAbsorptionCoefficient
 
     wallReflexionLayer = int(wallThickness / posStepSize) - 1  
     velocityFieldX[wallReflexionLayer+1, wallReflexionLayer+1:-wallReflexionLayer-2] *= 1 - 1.99 * wallReflectionCoefficient
@@ -137,10 +147,11 @@ def applyBoundaryConditions(pressureField, velocityFieldX, velocityFieldY):
     velocityFieldY[wallReflexionLayer+1:-wallReflexionLayer-2, wallReflexionLayer+1] *= 1 - 1.99 * wallReflectionCoefficient
     velocityFieldY[wallReflexionLayer+1:-wallReflexionLayer-2, -wallReflexionLayer-2] *= 1 - 1.99 * wallReflectionCoefficient
 
-    velocityFieldX[0, :] = 0
-    velocityFieldX[-1, :] = 0
-    velocityFieldY[:, 0] = 0
-    velocityFieldY[:, -1] = 0
+
+    #velocityFieldX[0, :] = 0
+    #velocityFieldX[-1, :] = 0
+    #velocityFieldY[:, 0] = 0
+    #velocityFieldY[:, -1] = 0
 
 
 def updateSpeakerPressure(pressureField, centerX, centerY, size, volume, phase):
