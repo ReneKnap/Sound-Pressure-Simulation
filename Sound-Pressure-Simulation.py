@@ -51,7 +51,7 @@ frameAnimation = tk.Frame(root, width=400, height=300)
 frameAnimation.pack(side=tk.TOP, pady=10)
 
 fig, ax = plt.subplots(figsize=(figWidth, figHeight), dpi=dpi)
-image = ax.imshow(pressureField, cmap='viridis', vmin=-0.25, vmax=0.25, animated=True)
+image = ax.imshow(pressureField, cmap='viridis', vmin=-0.0025, vmax=0.0025, animated=True)
 ax.set_title('Sound Pressure Simulation')
 ax.set_xlabel('X in meter')
 ax.set_ylabel('Y in meter')
@@ -66,15 +66,15 @@ yLabels = np.round(yTicks * posStepSize, 1)
 ax.set_yticks(yTicks)
 ax.set_yticklabels(yLabels)
 
-wall_color = 'gray'
-wall_rects = [
-    Rectangle((-0.2, -0.2), wallThickness/posStepSize-0.4, numDiscretePosY-1+0.4, color=wall_color, fill=False, linewidth=2, hatch='////'),
-    Rectangle((numDiscretePosX-wallThickness/posStepSize-1+0.4, -0.2), wallThickness/posStepSize-0.2, numDiscretePosY-1+0.4, color=wall_color, fill=False, linewidth=2, hatch='////'),
-    Rectangle((-0.2, -0.2), numDiscretePosX-1+0.4, wallThickness/posStepSize-0.2, color=wall_color, fill=False, linewidth=2, hatch='////'),
-    Rectangle((-0.2, numDiscretePosY-wallThickness/posStepSize-1+0.4), numDiscretePosX-1+0.4, wallThickness/posStepSize-0.2, color=wall_color, fill=False, linewidth=2, hatch='////')
+wallColor = 'gray'
+wallRects = [
+    Rectangle((-0.2, -0.2), wallThickness/posStepSize-0.4, numDiscretePosY-1+0.4, color=wallColor, fill=False, linewidth=2, hatch='////'),
+    Rectangle((numDiscretePosX-wallThickness/posStepSize-1+0.4, -0.2), wallThickness/posStepSize-0.2, numDiscretePosY-1+0.4, color=wallColor, fill=False, linewidth=2, hatch='////'),
+    Rectangle((-0.2, -0.2), numDiscretePosX-1+0.4, wallThickness/posStepSize-0.2, color=wallColor, fill=False, linewidth=2, hatch='////'),
+    Rectangle((-0.2, numDiscretePosY-wallThickness/posStepSize-1+0.4), numDiscretePosX-1+0.4, wallThickness/posStepSize-0.2, color=wallColor, fill=False, linewidth=2, hatch='////')
 ]
 
-for wall in wall_rects:
+for wall in wallRects:
     ax.add_patch(wall)
 
 speakerCircle = Circle(
@@ -123,6 +123,15 @@ resetButton.pack(side=tk.LEFT, padx=15)
 stopButton = tk.Button(frameControls, text="Stop", command=lambda: toggleSimulation(None))
 stopButton.pack(side=tk.LEFT, padx=15)
 
+fieldTarget = tk.StringVar(root)
+fieldTarget.set("Pressure")
+
+fieldOptions = ["Pressure", "Velocity X", "Velocity Y"]
+fieldMenu = tk.OptionMenu(frameControls, fieldTarget, *fieldOptions)
+fieldMenu.pack(side=tk.LEFT, padx=15)
+
+
+
 
 def calcFiniteDifferenceTimeDomain(pressureField, velocityFieldX, velocityFieldY):
     velocityFieldX[1:, :] -= timeStepSize / posStepSize * (pressureField[1:, :] - pressureField[:-1, :])
@@ -170,7 +179,7 @@ def updateSpeakerPressure(pressureField, phase):
                 if distance <= radius:
                     pressureField[y, x] += amplitude * np.sin(phase)
 
-def update_simulation(pressureField, velocityFieldX, velocityFieldY, currentPhase):
+def updateSimulation(pressureField, velocityFieldX, velocityFieldY, currentPhase):
     calcFiniteDifferenceTimeDomain(pressureField, velocityFieldX, velocityFieldY)
     applyBoundaryConditions(pressureField, velocityFieldX, velocityFieldY)
     pressureField = updateSpeakerPressure(pressureField, currentPhase)
@@ -180,17 +189,40 @@ def update_simulation(pressureField, velocityFieldX, velocityFieldY, currentPhas
 
     return currentPhase
 
+def updateDisplayedField():
+    selectedField = fieldTarget.get()
+    if selectedField == "Pressure":
+        image.set_array(pressureField[:-1, :-1])
+        image.set_clim(-0.25, 0.25)
+        cbar.set_label('Pressure (Pa)')
+    elif selectedField == "Velocity X":
+        image.set_array(velocityFieldX[:-1, :-1])
+        image.set_clim(-0.001, 0.001)
+        cbar.set_label('Particle velocity in X (m/s)')
+    elif selectedField == "Velocity Y":
+        image.set_array(velocityFieldY[:-1, :-1])
+        image.set_clim(-0.001, 0.001)
+        cbar.set_label('Particle velocity in Y (m/s)')
+
+def updateLegends(*args):
+    canvas.draw_idle()
+
+fieldTarget.trace_add("write", updateLegends)
+
+
 def update(frame):
     global pressureField, velocityFieldX, velocityFieldY, animRunning, currentPhase, simulatedTime
 
     if animRunning:
         for _ in range(4):
-            currentPhase = update_simulation(pressureField, velocityFieldX, velocityFieldY, currentPhase)
+            currentPhase = updateSimulation(pressureField, velocityFieldX, velocityFieldY, currentPhase)
             simulatedTime += timeStepSize * 1000
 
-        image.set_array(pressureField[:-1, :-1])
         timeAnnotation.set_text(f'Time: {simulatedTime:.2f} ms')
-    return [image, speakerCircle, timeAnnotation] + wall_rects
+
+
+    updateDisplayedField()
+    return [image, speakerCircle, timeAnnotation] + wallRects
 
 def updateFrequency(val):
     global speakerFrequency, omega
