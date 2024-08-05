@@ -2,21 +2,21 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from matplotlib.widgets import Slider, Button
-from matplotlib.patches import Circle
+from matplotlib.patches import Circle, Rectangle
 import tkinter as tk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 
 posStepSize = 0.05
-SPEED_OF_SOUND = 346.3  # speed of sound in air in m/s at 25°C
+SPEED_OF_SOUND = 346.3  # Speed of sound in air in m/s at 25°C
 timeStepSize = 0.1 * posStepSize / SPEED_OF_SOUND
-REFERENCE_PRESSURE = 20e-6  # reference pressure in Pascals for 0 dB
+REFERENCE_PRESSURE = 20e-6  # Reference pressure in Pascals for 0 dB
 
-roomWidth = 5.0  # in meters
-roomHeight = 3.6   # in meters
+roomWidth = 5.0  # Meters
+roomHeight = 3.6   # Meters
 wallThickness = 0.2
 
-# room size plus 2 times wall thickness
+# Room size plus 2 times wall thickness
 numDiscretePosX = int(roomWidth / posStepSize) + 1 + int(wallThickness / posStepSize) * 2
 numDiscretePosY = int(roomHeight / posStepSize) + 1 + int(wallThickness / posStepSize) * 2
 
@@ -24,16 +24,16 @@ pressureField = np.zeros((numDiscretePosY, numDiscretePosX))
 velocityFieldX = np.zeros((numDiscretePosY, numDiscretePosX))
 velocityFieldY = np.zeros((numDiscretePosY, numDiscretePosX))
 
-speakerSize = 0.3  # in meters
-speakerPosX = 10
-speakerPosY = 10
-frequency = 500  # in Hz
-omega = 2 * np.pi * frequency
-volume = 60  # in dB
+speakerSize = 0.3  # Meters
+speakerPosX = 0.5  # Meters
+speakerPosY = 0.5  # Meters
+speakerFrequency = 500  # Hz
+speakerVolume = 60  # dB
+omega = 2 * np.pi * speakerFrequency
 
 wallReflectionCoefficient = 0.8 # Proportion of reflection (0.0 to 1.0)
-wallPressureAbsorptionCoefficient = 0.05 # Proportion of absorbtion (0.0 to 1.0)
-wallVelocityAbsorptionCoefficient = 0.05 # Proportion of absorbtion (0.0 to 1.0)
+wallPressureAbsorptionCoefficient = 0.05 # Proportion of pressure absorption (0.0 to 1.0)
+wallVelocityAbsorptionCoefficient = 0.05 # Proportion of velocity absorption (0.0 to 1.0)
 
 animRunning = True
 currentPhase = 0
@@ -65,8 +65,19 @@ yLabels = np.round(yTicks * posStepSize, 1)
 ax.set_yticks(yTicks)
 ax.set_yticklabels(yLabels)
 
+wall_color = 'gray'
+wall_rects = [
+    Rectangle((-0.2, -0.2), wallThickness/posStepSize-0.4, numDiscretePosY-1+0.4, color=wall_color, fill=False, linewidth=2, hatch='////'),
+    Rectangle((numDiscretePosX-wallThickness/posStepSize-1+0.4, -0.2), wallThickness/posStepSize-0.2, numDiscretePosY-1+0.4, color=wall_color, fill=False, linewidth=2, hatch='////'),
+    Rectangle((-0.2, -0.2), numDiscretePosX-1+0.4, wallThickness/posStepSize-0.2, color=wall_color, fill=False, linewidth=2, hatch='////'),
+    Rectangle((-0.2, numDiscretePosY-wallThickness/posStepSize-1+0.4), numDiscretePosX-1+0.4, wallThickness/posStepSize-0.2, color=wall_color, fill=False, linewidth=2, hatch='////')
+]
+
+for wall in wall_rects:
+    ax.add_patch(wall)
+
 speakerCircle = Circle(
-    (speakerPosY, speakerPosX), radius=speakerSize / posStepSize / 2, color='orange', fill=False, linewidth=2)
+    (speakerPosX / posStepSize , speakerPosY / posStepSize), radius=speakerSize / posStepSize / 2, color='orange', fill=False, linewidth=2)
 ax.add_patch(speakerCircle)
 
 canvas = FigureCanvasTkAgg(fig, master=frameAnimation)
@@ -78,27 +89,27 @@ canvas.get_tk_widget().config(width=1000, height=750)
 frameControls = tk.Frame(root)
 frameControls.pack(side=tk.TOP, pady=10)
 
-frequencyLabel = tk.Label(frameControls, text="Frequency (Hz)")
-frequencyLabel.pack(side=tk.LEFT, padx=5)
+speakerFrequencyLabel = tk.Label(frameControls, text="Frequency (Hz)")
+speakerFrequencyLabel.pack(side=tk.LEFT, padx=5)
 
-frequencyEntry = tk.Entry(frameControls, width=5)
-frequencyEntry.insert(0, str(frequency))
-frequencyEntry.pack(side=tk.LEFT, padx=5)
+speakerFrequencyEntry = tk.Entry(frameControls, width=5)
+speakerFrequencyEntry.insert(0, str(speakerFrequency))
+speakerFrequencyEntry.pack(side=tk.LEFT, padx=5)
 
-frequencySlider = tk.Scale(frameControls, from_=10, to=1000, orient=tk.HORIZONTAL, length=200)
-frequencySlider.set(frequency)
-frequencySlider.pack(side=tk.LEFT, padx=5)
+speakerFrequencySlider = tk.Scale(frameControls, from_=10, to=1000, orient=tk.HORIZONTAL, length=200)
+speakerFrequencySlider.set(speakerFrequency)
+speakerFrequencySlider.pack(side=tk.LEFT, padx=5)
 
-volumeLabel = tk.Label(frameControls, text="Volume (dB)")
-volumeLabel.pack(side=tk.LEFT, padx=5)
+speakerVolumeLabel = tk.Label(frameControls, text="Volume (dB)")
+speakerVolumeLabel.pack(side=tk.LEFT, padx=5)
 
-volumeEntry = tk.Entry(frameControls, width=5)
-volumeEntry.insert(0, str(volume))
-volumeEntry.pack(side=tk.LEFT, padx=5)
+speakerVolumeEntry = tk.Entry(frameControls, width=5)
+speakerVolumeEntry.insert(0, str(speakerVolume))
+speakerVolumeEntry.pack(side=tk.LEFT, padx=5)
 
-volumeSlider = tk.Scale(frameControls, from_=0, to=120, orient=tk.HORIZONTAL, length=200)
-volumeSlider.set(volume) 
-volumeSlider.pack(side=tk.LEFT, padx=5)
+speakerVolumeSlider = tk.Scale(frameControls, from_=0, to=120, orient=tk.HORIZONTAL, length=200)
+speakerVolumeSlider.set(speakerVolume) 
+speakerVolumeSlider.pack(side=tk.LEFT, padx=5)
 
 resetButton = tk.Button(frameControls, text="Reset", command=lambda: resetSimulation(None))
 resetButton.pack(side=tk.LEFT, padx=15)
@@ -108,7 +119,6 @@ stopButton.pack(side=tk.LEFT, padx=15)
 
 
 def calcFiniteDifferenceTimeDomain(pressureField, velocityFieldX, velocityFieldY):
-    # update velocity fields
     velocityFieldX[1:, :] -= timeStepSize / posStepSize * (pressureField[1:, :] - pressureField[:-1, :])
     velocityFieldY[:, 1:] -= timeStepSize / posStepSize * (pressureField[:, 1:] - pressureField[:, :-1])
 
@@ -144,13 +154,13 @@ def applyBoundaryConditions(pressureField, velocityFieldX, velocityFieldY):
     velocityFieldY[:, -1] = 0
 
 def updateSpeakerPressure(pressureField, phase):
-    amplitude = REFERENCE_PRESSURE * (10 ** (volume / 20))
+    amplitude = REFERENCE_PRESSURE * (10 ** (speakerVolume / 20))
     radius = speakerSize / (2 * posStepSize)
 
-    for y in range(speakerPosX - int(radius) - 0, speakerPosX + int(radius) + 0):
-        for x in range(speakerPosY - int(radius) - 0, speakerPosY + int(radius) + 0):
+    for y in range(int(speakerPosY / posStepSize  - radius), int(speakerPosY / posStepSize + radius)):
+        for x in range(int(speakerPosX / posStepSize  - radius), int(speakerPosX / posStepSize + radius)):
             if 0 <= x < numDiscretePosX and 0 <= y < numDiscretePosY:
-                distance = np.sqrt((x - speakerPosY) ** 2 + (y - speakerPosX) ** 2)
+                distance = np.sqrt((x - speakerPosX / posStepSize ) ** 2 + (y - speakerPosY / posStepSize ) ** 2)
                 if distance <= radius:
                     pressureField[y, x] += amplitude * np.sin(phase)
 
@@ -172,40 +182,36 @@ def update(frame):
             currentPhase = update_simulation(pressureField, velocityFieldX, velocityFieldY, currentPhase)
 
         image.set_array(pressureField[:-1, :-1])
-
-        # Draw Speaker
-        speakerCircle.set_radius(speakerSize / posStepSize / 2)
-        ax.add_patch(speakerCircle)
-    return [image, speakerCircle]
+    return [image, speakerCircle] + wall_rects
 
 def updateFrequency(val):
-    global frequency, omega
-    frequency = frequencySlider.get()
-    omega = 2 * np.pi * frequency
-    frequencyEntry.delete(0, tk.END)
-    frequencyEntry.insert(0, str(frequency))
+    global speakerFrequency, omega
+    speakerFrequency = speakerFrequencySlider.get()
+    omega = 2 * np.pi * speakerFrequency
+    speakerFrequencyEntry.delete(0, tk.END)
+    speakerFrequencyEntry.insert(0, str(speakerFrequency))
 
 def updateFrequencyFromEntry(event):
     try:
-        val = frequencyEntry.get()
+        val = speakerFrequencyEntry.get()
         if 10 <= val <= 1000:
-            frequencySlider.set(val)
+            speakerFrequencySlider.set(val)
             updateFrequency(None)
     except ValueError:
         pass
 
 def updateVolume(val):
-    global volume
-    volume = volumeSlider.get()
-    volumeEntry.delete(0, tk.END)
-    volumeEntry.insert(0, str(volume))
+    global speakerVolume
+    speakerVolume = speakerVolumeSlider.get()
+    speakerVolumeEntry.delete(0, tk.END)
+    speakerVolumeEntry.insert(0, str(speakerVolume))
 
 
 def updateVolumeFromEntry(event):
     try:
-        val = volumeEntry.get()
+        val = speakerVolumeEntry.get()
         if 0 <= val <= 120:
-            volumeSlider.set(val)
+            speakerVolumeSlider.set(val)
             updateVolume(None)
     except ValueError:
         pass
@@ -226,10 +232,10 @@ def toggleSimulation(event):
         stopButton.config(text='Start')
 
 
-frequencySlider.bind("<B1-Motion>", updateFrequency) 
-volumeSlider.bind("<B1-Motion>", updateVolume)
-frequencyEntry.bind("<Return>", updateFrequencyFromEntry)
-volumeEntry.bind("<Return>", updateVolumeFromEntry)
+speakerFrequencySlider.bind("<B1-Motion>", updateFrequency) 
+speakerVolumeSlider.bind("<B1-Motion>", updateVolume)
+speakerFrequencyEntry.bind("<Return>", updateFrequencyFromEntry)
+speakerVolumeEntry.bind("<Return>", updateVolumeFromEntry)
 
 animation = FuncAnimation(fig, update, blit=True, interval=1, cache_frame_data=False)
 
