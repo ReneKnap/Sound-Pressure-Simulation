@@ -139,6 +139,7 @@ class Absorber:
         self.sizeY = sizeY
         self.absorptionPressure = absorptionPressure
         self.absorptionVelocity = absorptionVelocity
+        self.patch = None # Store the Rectangle object
         self.startX = int(posX / posStepSize)
         self.endX = int((posX + sizeX) / posStepSize)
         self.startY = int(posY / posStepSize)
@@ -149,18 +150,26 @@ class Absorber:
         velocityFieldX[self.startY:self.endY, self.startX:self.endX] *= (1 - self.absorptionVelocity)
         velocityFieldY[self.startY:self.endY, self.startX:self.endX] *= (1 - self.absorptionVelocity)
 
-absorber_01 = Absorber(posX=4.6, posY=0.2, sizeX=0.6, sizeY=0.6, absorptionPressure=0.0, absorptionVelocity=0.1)
-absorber_02 = Absorber(posX=4.6, posY=3.2, sizeX=0.6, sizeY=0.6, absorptionPressure=0.0, absorptionVelocity=0.1)
+    def draw(self, ax):
+        absorberRect = Rectangle((self.posX / posStepSize, self.posY / posStepSize),
+                                  self.sizeX / posStepSize, self.sizeY / posStepSize,
+                                  color='red', fill=False)
+        ax.add_patch(absorberRect)
+    
+    def getPatch(self):
+        if not self.patch:
+            self.patch = Rectangle((self.posX / posStepSize, self.posY / posStepSize),
+                                   self.sizeX / posStepSize, self.sizeY / posStepSize,
+                                   color='red', fill=False)
+        return self.patch
 
-absorber_01_Rect = Rectangle((absorber_01.posX / posStepSize, absorber_01.posY / posStepSize),
-                         absorber_01.sizeX / posStepSize, absorber_01.sizeY / posStepSize,
-                         color='red', fill=False)
-ax.add_patch(absorber_01_Rect)
+absorbers = [
+    Absorber(posX=4.6, posY=0.2, sizeX=0.6, sizeY=0.6, absorptionPressure=0.0, absorptionVelocity=0.1),
+    Absorber(posX=4.6, posY=3.2, sizeX=0.6, sizeY=0.6, absorptionPressure=0.0, absorptionVelocity=0.1)
+]
 
-absorber_02_Rect = Rectangle((absorber_02.posX / posStepSize, absorber_02.posY / posStepSize),
-                         absorber_02.sizeX / posStepSize, absorber_02.sizeY / posStepSize,
-                         color='red', fill=False)
-ax.add_patch(absorber_02_Rect)
+absorberPatches = [ax.add_patch(absorber.getPatch()) for absorber in absorbers]
+
 def calcFiniteDifferenceTimeDomain(pressureField, velocityFieldX, velocityFieldY):
     velocityFieldX[1:, :] -= timeStepSize / posStepSize * (pressureField[1:, :] - pressureField[:-1, :])
     velocityFieldY[:, 1:] -= timeStepSize / posStepSize * (pressureField[:, 1:] - pressureField[:, :-1])
@@ -211,8 +220,9 @@ def updateSimulation(pressureField, velocityFieldX, velocityFieldY, currentPhase
     calcFiniteDifferenceTimeDomain(pressureField, velocityFieldX, velocityFieldY)
     applyBoundaryConditions(pressureField, velocityFieldX, velocityFieldY)
     updateSpeakerPressure(pressureField, currentPhase)
-    absorber_01.applyAbsorption(pressureField, velocityFieldX, velocityFieldY)
-    absorber_02.applyAbsorption(pressureField, velocityFieldX, velocityFieldY)
+    for absorber in absorbers:
+        absorber.applyAbsorption(pressureField, velocityFieldX, velocityFieldY)
+
 
     currentPhase += omega * timeStepSize
     currentPhase %= 2 * np.pi
@@ -251,7 +261,7 @@ def update(frame):
 
 
     updateDisplayedField()
-    return [image, speakerCircle, timeAnnotation, absorber_01_Rect, absorber_02_Rect] + wallRects
+    return [image, speakerCircle, timeAnnotation] + wallRects + absorberPatches
 
 def updateFrequency(val):
     global speakerFrequency, omega
