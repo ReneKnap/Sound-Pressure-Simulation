@@ -27,13 +27,13 @@ velocityFieldY = np.zeros((numDiscretePosY, numDiscretePosX))
 speakerSize = 0.3  # m
 speakerPosX = 0.5  # m
 speakerPosY = 0.5  # m
-speakerFrequency = 500  # Hz
-speakerVolume = 60  # dB
+speakerFrequency = 30  # Hz
+speakerVolume = 70  # dB
 omega = 2 * np.pi * speakerFrequency
 
 wallReflectionCoefficient = 0.8 # Proportion of reflection (0.0 to 1.0)
-wallPressureAbsorptionCoefficient = 0.05 # Proportion of pressure absorption (0.0 to 1.0)
-wallVelocityAbsorptionCoefficient = 0.05 # Proportion of velocity absorption (0.0 to 1.0)
+wallPressureAbsorptionCoefficient = 0.2 # Proportion of pressure absorption (0.0 to 1.0)
+wallVelocityAbsorptionCoefficient = 0.2 # Proportion of velocity absorption (0.0 to 1.0)
 
 animRunning = True
 simulatedTime = 0.0  # ms
@@ -131,8 +131,36 @@ fieldMenu = tk.OptionMenu(frameControls, fieldTarget, *fieldOptions)
 fieldMenu.pack(side=tk.LEFT, padx=15)
 
 
+class Absorber:
+    def __init__(self, posX, posY, sizeX, sizeY, absorptionPressure, absorptionVelocity):
+        self.posX = posX
+        self.posY = posY
+        self.sizeX = sizeX
+        self.sizeY = sizeY
+        self.absorptionPressure = absorptionPressure
+        self.absorptionVelocity = absorptionVelocity
+        self.startX = int(posX / posStepSize)
+        self.endX = int((posX + sizeX) / posStepSize)
+        self.startY = int(posY / posStepSize)
+        self.endY = int((posY + sizeY) / posStepSize)
 
+    def applyAbsorption(self, pressureField, velocityFieldX, velocityFieldY):
+        pressureField[self.startY:self.endY, self.startX:self.endX] *= (1 - self.absorptionPressure)
+        velocityFieldX[self.startY:self.endY, self.startX:self.endX] *= (1 - self.absorptionVelocity)
+        velocityFieldY[self.startY:self.endY, self.startX:self.endX] *= (1 - self.absorptionVelocity)
 
+absorber_01 = Absorber(posX=4.6, posY=0.2, sizeX=0.6, sizeY=0.6, absorptionPressure=0.0, absorptionVelocity=0.1)
+absorber_02 = Absorber(posX=4.6, posY=3.2, sizeX=0.6, sizeY=0.6, absorptionPressure=0.0, absorptionVelocity=0.1)
+
+absorber_01_Rect = Rectangle((absorber_01.posX / posStepSize, absorber_01.posY / posStepSize),
+                         absorber_01.sizeX / posStepSize, absorber_01.sizeY / posStepSize,
+                         color='red', fill=False)
+ax.add_patch(absorber_01_Rect)
+
+absorber_02_Rect = Rectangle((absorber_02.posX / posStepSize, absorber_02.posY / posStepSize),
+                         absorber_02.sizeX / posStepSize, absorber_02.sizeY / posStepSize,
+                         color='red', fill=False)
+ax.add_patch(absorber_02_Rect)
 def calcFiniteDifferenceTimeDomain(pressureField, velocityFieldX, velocityFieldY):
     velocityFieldX[1:, :] -= timeStepSize / posStepSize * (pressureField[1:, :] - pressureField[:-1, :])
     velocityFieldY[:, 1:] -= timeStepSize / posStepSize * (pressureField[:, 1:] - pressureField[:, :-1])
@@ -182,7 +210,9 @@ def updateSpeakerPressure(pressureField, phase):
 def updateSimulation(pressureField, velocityFieldX, velocityFieldY, currentPhase):
     calcFiniteDifferenceTimeDomain(pressureField, velocityFieldX, velocityFieldY)
     applyBoundaryConditions(pressureField, velocityFieldX, velocityFieldY)
-    pressureField = updateSpeakerPressure(pressureField, currentPhase)
+    updateSpeakerPressure(pressureField, currentPhase)
+    absorber_01.applyAbsorption(pressureField, velocityFieldX, velocityFieldY)
+    absorber_02.applyAbsorption(pressureField, velocityFieldX, velocityFieldY)
 
     currentPhase += omega * timeStepSize
     currentPhase %= 2 * np.pi
@@ -212,7 +242,6 @@ fieldTarget.trace_add("write", updateLegends)
 
 def update(frame):
     global pressureField, velocityFieldX, velocityFieldY, animRunning, currentPhase, simulatedTime
-
     if animRunning:
         for _ in range(4):
             currentPhase = updateSimulation(pressureField, velocityFieldX, velocityFieldY, currentPhase)
@@ -222,7 +251,7 @@ def update(frame):
 
 
     updateDisplayedField()
-    return [image, speakerCircle, timeAnnotation] + wallRects
+    return [image, speakerCircle, timeAnnotation, absorber_01_Rect, absorber_02_Rect] + wallRects
 
 def updateFrequency(val):
     global speakerFrequency, omega
