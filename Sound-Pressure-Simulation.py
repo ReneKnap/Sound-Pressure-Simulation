@@ -34,8 +34,8 @@ velocityFieldY = np.zeros((numDiscretePosY, numDiscretePosX))
 
 speakerRadius = 0.3  # m
 speakerPos = Position(0.5, 0.5)  # m
-speakerFrequency = 30  # Hz
-speakerVolume = 70  # dB
+speakerFrequency = 30.0  # Hz
+speakerVolume = 70.0  # dB
 omega = 2 * np.pi * speakerFrequency
 
 wallReflectionCoefficient = 0.8 # Proportion of reflection (0.0 to 1.0)
@@ -105,22 +105,22 @@ frameControls.pack(side=tk.TOP, pady=10)
 speakerFrequencyLabel = tk.Label(frameControls, text="Frequency (Hz)")
 speakerFrequencyLabel.pack(side=tk.LEFT, padx=5)
 
-speakerFrequencyEntry = tk.Entry(frameControls, width=5)
+speakerFrequencyEntry = tk.Entry(frameControls, width=8)
 speakerFrequencyEntry.insert(0, str(speakerFrequency))
 speakerFrequencyEntry.pack(side=tk.LEFT, padx=5)
 
-speakerFrequencySlider = tk.Scale(frameControls, from_=10, to=1000, orient=tk.HORIZONTAL, length=200)
+speakerFrequencySlider = tk.Scale(frameControls, from_=20, to=2000, orient=tk.HORIZONTAL, length=200, resolution=0.01)
 speakerFrequencySlider.set(speakerFrequency)
 speakerFrequencySlider.pack(side=tk.LEFT, padx=5)
 
 speakerVolumeLabel = tk.Label(frameControls, text="Volume (dB)")
 speakerVolumeLabel.pack(side=tk.LEFT, padx=5)
 
-speakerVolumeEntry = tk.Entry(frameControls, width=5)
+speakerVolumeEntry = tk.Entry(frameControls, width=8)
 speakerVolumeEntry.insert(0, str(speakerVolume))
 speakerVolumeEntry.pack(side=tk.LEFT, padx=5)
 
-speakerVolumeSlider = tk.Scale(frameControls, from_=0, to=120, orient=tk.HORIZONTAL, length=200)
+speakerVolumeSlider = tk.Scale(frameControls, from_=0, to=120, orient=tk.HORIZONTAL, length=200, resolution=0.01)
 speakerVolumeSlider.set(speakerVolume) 
 speakerVolumeSlider.pack(side=tk.LEFT, padx=5)
 
@@ -268,33 +268,33 @@ def update(frame):
     updateDisplayedField()
     return [image, speakerCircle, timeAnnotation] + wallRects + absorberPatches
 
-def updateFrequency(val):
+def updateFrequency(event):
     global speakerFrequency, omega
-    speakerFrequency = speakerFrequencySlider.get()
+    speakerFrequency = float(speakerFrequencySlider.get())
     omega = 2 * np.pi * speakerFrequency
     speakerFrequencyEntry.delete(0, tk.END)
     speakerFrequencyEntry.insert(0, str(speakerFrequency))
 
 def updateFrequencyFromEntry(event):
     try:
-        val = speakerFrequencyEntry.get()
-        if 10 <= val <= 1000:
+        val = float(speakerFrequencyEntry.get())
+        if 20.0 <= val <= 2000.0:
             speakerFrequencySlider.set(val)
             updateFrequency(None)
     except ValueError:
         pass
 
-def updateVolume(val):
+def updateVolume(event):
     global speakerVolume
-    speakerVolume = speakerVolumeSlider.get()
+    speakerVolume = float(speakerVolumeSlider.get())
     speakerVolumeEntry.delete(0, tk.END)
     speakerVolumeEntry.insert(0, str(speakerVolume))
 
 
 def updateVolumeFromEntry(event):
     try:
-        val = speakerVolumeEntry.get()
-        if 0 <= val <= 120:
+        val = float(speakerVolumeEntry.get())
+        if 0.0 <= val <= 120.0:
             speakerVolumeSlider.set(val)
             updateVolume(None)
     except ValueError:
@@ -317,8 +317,8 @@ def toggleSimulation(event):
         stopButton.config(text='Start')
 
 
-speakerFrequencySlider.bind("<B1-Motion>", updateFrequency) 
-speakerVolumeSlider.bind("<B1-Motion>", updateVolume)
+speakerFrequencySlider.config(command=updateFrequency)
+speakerVolumeSlider.config(command=updateVolume)
 speakerFrequencyEntry.bind("<Return>", updateFrequencyFromEntry)
 speakerVolumeEntry.bind("<Return>", updateVolumeFromEntry)
 
