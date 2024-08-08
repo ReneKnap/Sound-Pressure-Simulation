@@ -5,7 +5,15 @@ from matplotlib.widgets import Slider, Button
 from matplotlib.patches import Circle, Rectangle
 import tkinter as tk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from typing import NamedTuple
 
+class Position(NamedTuple):
+    x: float
+    y: float
+
+class Size(NamedTuple):
+    width: float
+    height: float
 
 posStepSize = 0.05
 SPEED_OF_SOUND = 346.3  # Speed of sound in air in m/s at 25°C
@@ -24,9 +32,8 @@ pressureField = np.zeros((numDiscretePosY, numDiscretePosX))
 velocityFieldX = np.zeros((numDiscretePosY, numDiscretePosX))
 velocityFieldY = np.zeros((numDiscretePosY, numDiscretePosX))
 
-speakerSize = 0.3  # m
-speakerPosX = 0.5  # m
-speakerPosY = 0.5  # m
+speakerRadius = 0.3  # m
+speakerPos = Position(0.5, 0.5)  # m
 speakerFrequency = 30  # Hz
 speakerVolume = 70  # dB
 omega = 2 * np.pi * speakerFrequency
@@ -78,7 +85,7 @@ for wall in wallRects:
     ax.add_patch(wall)
 
 speakerCircle = Circle(
-    (speakerPosX / posStepSize , speakerPosY / posStepSize), radius=speakerSize / posStepSize / 2, color='orange', fill=False, linewidth=2)
+    (speakerPos.x / posStepSize , speakerPos.y / posStepSize), radius=speakerRadius / posStepSize / 2, color='orange', fill=False, linewidth=2)
 ax.add_patch(speakerCircle)
 
 timeAnnotation = ax.text(0.05, 0.99, '', transform=ax.transAxes, color='white', fontsize=12, weight='bold', va='top')
@@ -132,18 +139,16 @@ fieldMenu.pack(side=tk.LEFT, padx=15)
 
 
 class Absorber:
-    def __init__(self, posX, posY, sizeX, sizeY, absorptionPressure, absorptionVelocity):
-        self.posX = posX
-        self.posY = posY
-        self.sizeX = sizeX
-        self.sizeY = sizeY
+    def __init__(self, position, size, absorptionPressure = 0.0, absorptionVelocity = 0.0):
+        self.position = position
+        self.size = size
         self.absorptionPressure = absorptionPressure
         self.absorptionVelocity = absorptionVelocity
         self.patch = None # Store the Rectangle object
-        self.startX = int(posX / posStepSize)
-        self.endX = int((posX + sizeX) / posStepSize)
-        self.startY = int(posY / posStepSize)
-        self.endY = int((posY + sizeY) / posStepSize)
+        self.startX = int(position.x / posStepSize)
+        self.endX = int((position.x + size.width) / posStepSize)
+        self.startY = int(position.y / posStepSize)
+        self.endY = int((position.y + size.height) / posStepSize)
 
     def applyAbsorption(self, pressureField, velocityFieldX, velocityFieldY):
         pressureField[self.startY:self.endY, self.startX:self.endX] *= (1 - self.absorptionPressure)
@@ -151,21 +156,21 @@ class Absorber:
         velocityFieldY[self.startY:self.endY, self.startX:self.endX] *= (1 - self.absorptionVelocity)
 
     def draw(self, ax):
-        absorberRect = Rectangle((self.posX / posStepSize, self.posY / posStepSize),
-                                  self.sizeX / posStepSize, self.sizeY / posStepSize,
+        absorberRect = Rectangle((self.position.x / posStepSize, self.position.y / posStepSize),
+                                  self.size.width / posStepSize, self.size.height / posStepSize,
                                   color='red', fill=False)
         ax.add_patch(absorberRect)
     
     def getPatch(self):
         if not self.patch:
-            self.patch = Rectangle((self.posX / posStepSize, self.posY / posStepSize),
-                                   self.sizeX / posStepSize, self.sizeY / posStepSize,
+            self.patch = Rectangle((self.position.x / posStepSize, self.position.y / posStepSize),
+                                   self.size.width / posStepSize, self.size.height / posStepSize,
                                    color='red', fill=False)
         return self.patch
 
 absorbers = [
-    Absorber(posX=4.6, posY=0.2, sizeX=0.6, sizeY=0.6, absorptionPressure=0.0, absorptionVelocity=0.1),
-    Absorber(posX=4.6, posY=3.2, sizeX=0.6, sizeY=0.6, absorptionPressure=0.0, absorptionVelocity=0.1)
+    Absorber(Position(4.6, 0.2), Size(0.6, 0.6), absorptionPressure=0.0, absorptionVelocity=0.1),
+    Absorber(Position(4.6, 3.2), Size(0.6, 0.6), absorptionPressure=0.0, absorptionVelocity=0.1)
 ]
 
 absorberPatches = [ax.add_patch(absorber.getPatch()) for absorber in absorbers]
@@ -207,12 +212,12 @@ def applyBoundaryConditions(pressureField, velocityFieldX, velocityFieldY):
 
 def updateSpeakerPressure(pressureField, phase):
     amplitude = REFERENCE_PRESSURE * (10 ** (speakerVolume / 20))
-    radius = speakerSize / (2 * posStepSize)
+    radius = speakerRadius / (2 * posStepSize)
 
-    for y in range(int(speakerPosY / posStepSize  - radius), int(speakerPosY / posStepSize + radius)):
-        for x in range(int(speakerPosX / posStepSize  - radius), int(speakerPosX / posStepSize + radius)):
+    for y in range(int(speakerPos.y / posStepSize  - radius), int(speakerPos.y / posStepSize + radius)):
+        for x in range(int(speakerPos.x / posStepSize  - radius), int(speakerPos.x / posStepSize + radius)):
             if 0 <= x < numDiscretePosX and 0 <= y < numDiscretePosY:
-                distance = np.sqrt((x - speakerPosX / posStepSize ) ** 2 + (y - speakerPosY / posStepSize ) ** 2)
+                distance = np.sqrt((x - speakerPos.x / posStepSize ) ** 2 + (y - speakerPos.y / posStepSize ) ** 2)
                 if distance <= radius:
                     pressureField[y, x] += amplitude * np.sin(phase)
 
