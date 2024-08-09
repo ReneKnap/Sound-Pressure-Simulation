@@ -308,7 +308,18 @@ def update(frame):
             currentPhase = updateSimulation(pressureField, velocityFieldX, velocityFieldY, currentPhase)
             simulatedTime += timeStepSize * 1000
 
-        timeAnnotation.set_text(f'Time: {simulatedTime:.2f} ms')
+        selectedField = fieldTarget.get()
+        if selectedField == "dB Level" and pressure_dB_cache is not None:
+            max_dB = np.max(pressure_dB_cache[5:-5, 5:-5])
+            min_dB = np.min(pressure_dB_cache[5:-5, 5:-5])
+            text = (
+                f'Time: {simulatedTime:2.2f} ms, '
+                f'Max: {max_dB:2.2f} dB, '
+                f'Min: {min_dB:2.2f} dB'
+            )
+            timeAnnotation.set_text(text)
+        else:
+            timeAnnotation.set_text(f'Time: {simulatedTime:2.2f} ms')
 
 
     updateDisplayedField()
