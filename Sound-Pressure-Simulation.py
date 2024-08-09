@@ -28,8 +28,8 @@ roomHeight = 3.6   # m
 wallThickness = 0.2  # m
 
 # Room size plus 2 times wall thickness
-numDiscretePosX = int(roomWidth / posStepSize) + 1 + int(wallThickness / posStepSize) * 2
-numDiscretePosY = int(roomHeight / posStepSize) + 1 + int(wallThickness / posStepSize) * 2
+numDiscretePosX = int(round(roomWidth / posStepSize)) + int(round(wallThickness / posStepSize)) * 2
+numDiscretePosY = int(round(roomHeight / posStepSize)) + int(round(wallThickness / posStepSize)) * 2
 
 pressureField = np.zeros((numDiscretePosY, numDiscretePosX))
 velocityFieldX = np.zeros((numDiscretePosY, numDiscretePosX))
@@ -37,7 +37,7 @@ velocityFieldY = np.zeros((numDiscretePosY, numDiscretePosX))
 
 speakerRadius = 0.3  # m
 speakerPos = Position(0.5, 2)  # m
-speakerFrequency = 33.63   # Hz
+speakerFrequency = 133.63   # Hz
 speakerVolume = 85.0  # dB
 omega = 2 * np.pi * speakerFrequency
 
@@ -50,11 +50,10 @@ simulatedTime = 0.0  # ms
 currentPhase = 0
 
 pressureHistoryDuration = 1.0 / lowestFrequency  # s
-pressureHistoryLength = int(pressureHistoryDuration / timeStepSize)
+pressureHistoryLength = int(round(round(pressureHistoryDuration / timeStepSize)))
 pressureHistory = [np.zeros((numDiscretePosY, numDiscretePosX)) for _ in range(pressureHistoryLength)]
 pressureIndex = 0
 pressure_dB_cache = None
-
 
 dpi = 100 
 figWidth = 400 / dpi
@@ -73,12 +72,12 @@ ax.set_title('Sound Pressure Simulation')
 ax.set_xlabel('X in meter')
 ax.set_ylabel('Y in meter')
 
-xTicks = np.arange(0, numDiscretePosX, int(1 / posStepSize))
+xTicks = np.arange(0, numDiscretePosX, int(round(1 / posStepSize)))
 xLabels = np.round(xTicks * posStepSize, 1)
 ax.set_xticks(xTicks)
 ax.set_xticklabels(xLabels)
 
-yTicks = np.arange(0, numDiscretePosY, int(1 / posStepSize))
+yTicks = np.arange(0, numDiscretePosY, int(round(1 / posStepSize)))
 yLabels = np.round(yTicks * posStepSize, 1)
 ax.set_yticks(yTicks)
 ax.set_yticklabels(yLabels)
@@ -98,15 +97,8 @@ speakerCircle = Circle(
     (speakerPos.x / posStepSize , speakerPos.y / posStepSize), radius=speakerRadius / posStepSize / 2, color='orange', fill=False, linewidth=2)
 ax.add_patch(speakerCircle)
 
-timeAnnotation = ax.text(
-    0.05, 0.99, '', 
-    transform=ax.transAxes, 
-    color='white', 
-    fontsize=12, 
-    weight='bold', 
-    va='top',
-    bbox=dict(facecolor='dimgray', alpha=0.5, edgecolor='none', boxstyle='round,pad=0.3')
-)
+max_dB_marker, = ax.plot([], [], 'x', color=(0.3, 0.5, 1), markersize=10, markeredgewidth=2, label='Max dB')
+min_dB_marker, = ax.plot([], [], 'rx', markersize=10, markeredgewidth=2, label='Min dB')
 
 cbar = fig.colorbar(image, ax=ax, orientation='vertical')
 cbar.set_label('Druck (Pa)')
@@ -163,36 +155,33 @@ class Absorber:
         self.absorptionPressure = absorptionPressure
         self.absorptionVelocity = absorptionVelocity
         self.patch = None # Store the Rectangle object
-        self.startX = int(position.x / posStepSize) +1
-        self.endX = int((position.x + size.width) / posStepSize) +1
-        self.startY = int(position.y / posStepSize) +1
-        self.endY = int((position.y + size.height) / posStepSize) +1
+        self.startX = int(round(position.x / posStepSize))
+        self.endX = int(round((position.x + size.width) / posStepSize))
+        self.startY = int(round(position.y / posStepSize))
+        self.endY = int(round((position.y + size.height) / posStepSize))
 
     def applyAbsorption(self, pressureField, velocityFieldX, velocityFieldY):
         pressureField[self.startY:self.endY, self.startX:self.endX] *= (1 - self.absorptionPressure)
         velocityFieldX[self.startY:self.endY, self.startX:self.endX] *= (1 - self.absorptionVelocity)
         velocityFieldY[self.startY:self.endY, self.startX:self.endX] *= (1 - self.absorptionVelocity)
-
-    def draw(self, ax):
-        absorberRect = Rectangle((self.position.x / posStepSize, self.position.y / posStepSize),
-                                  self.size.width / posStepSize, self.size.height / posStepSize,
-                                  color='red', fill=False)
-        ax.add_patch(absorberRect)
     
     def getPatch(self):
         if not self.patch:
-            self.patch = Rectangle((self.position.x / posStepSize, self.position.y / posStepSize),
-                                   self.size.width / posStepSize, self.size.height / posStepSize,
+            self.patch = Rectangle((self.startX - 0.6, self.startY - 0.6),
+                                   int(round(self.size.width / posStepSize)), int(round(self.size.height / posStepSize)),
                                    color='red', fill=False)
         return self.patch
 
 absorbers = [
-    Absorber(Position(0.2, 0.2), Size(0.5, 0.5), absorptionPressure=0.0, absorptionVelocity=0.35),
-    Absorber(Position(0.2, 3.3), Size(0.5, 0.5), absorptionPressure=0.0, absorptionVelocity=0.35),
-    Absorber(Position(4.8, 0.2), Size(0.4, 1.88), absorptionPressure=0.0, absorptionVelocity=0.35),
-    Absorber(Position(1.5, 3.64), Size(1.6, 0.16), absorptionPressure=0.0, absorptionVelocity=0.05),
-    Absorber(Position(1.5, 0.2), Size(1.6, 0.16), absorptionPressure=0.0, absorptionVelocity=0.05)
+    Absorber(Position(0.2, 0.2), Size(0.5, 0.5), absorptionPressure=0.0, absorptionVelocity=0.2),
+    Absorber(Position(0.2, 3.3), Size(0.5, 0.5), absorptionPressure=0.0, absorptionVelocity=0.2),
+    Absorber(Position(4.9, 0.2), Size(0.4, 1.9), absorptionPressure=0.0, absorptionVelocity=0.2),
+    Absorber(Position(1.7, 3.65), Size(1.6, 0.15), absorptionPressure=0.0, absorptionVelocity=0.2),
+    Absorber(Position(1.7, 0.2), Size(1.6, 0.15), absorptionPressure=0.0, absorptionVelocity=0.2)
 ]
+roomWidth = 5.1  # m
+roomHeight = 3.6  # m
+wallThickness = 0.2  # m
 
 absorberPatches = [ax.add_patch(absorber.getPatch()) for absorber in absorbers]
 
@@ -202,13 +191,11 @@ def updatePressureHistory(pressureField):
     pressureIndex = (pressureIndex + 1) % len(pressureHistory)
 
 def calcPressure_dB():
-    global pressureHistory
     pressureHistoryNp = np.array(pressureHistory) 
     maxPressure = np.amax(pressureHistoryNp, axis=0)
     minPressure = np.amin(pressureHistoryNp, axis=0)
     difPressure = abs(maxPressure - minPressure)/2
     pressure_dB = 20 * np.log10(difPressure / REFERENCE_PRESSURE + 1e-12) # + 1e-12 to avoid log(0)
-    print(np.max(pressure_dB[5:-5, 5:-5]), " ", np.min(pressure_dB[5:-5, 5:-5]))
     return pressure_dB
 
 def calcFiniteDifferenceTimeDomain(pressureField, velocityFieldX, velocityFieldY):
@@ -220,7 +207,7 @@ def calcFiniteDifferenceTimeDomain(pressureField, velocityFieldX, velocityFieldY
 
 
 def applyBoundaryConditions(pressureField, velocityFieldX, velocityFieldY):
-    for i in range(int(wallThickness / posStepSize)):
+    for i in range(int(round(wallThickness / posStepSize))):
         pressureField[i, :] *= 1 - wallPressureAbsorptionCoefficient
         pressureField[-i-2, :] *= 1 - wallPressureAbsorptionCoefficient
         pressureField[:, i] *= 1 - wallPressureAbsorptionCoefficient
@@ -235,7 +222,7 @@ def applyBoundaryConditions(pressureField, velocityFieldX, velocityFieldY):
         velocityFieldY[:, i] *= 1 - wallVelocityAbsorptionCoefficient
         velocityFieldY[:, -i-1] *= 1 - wallVelocityAbsorptionCoefficient
 
-    wallReflexionLayer = int(wallThickness / posStepSize) - 1  
+    wallReflexionLayer = int(round(wallThickness / posStepSize)) - 1  
     velocityFieldX[wallReflexionLayer+1, wallReflexionLayer+1:-wallReflexionLayer-2] *= 1 - 1.99 * wallReflectionCoefficient
     velocityFieldX[-wallReflexionLayer-2, wallReflexionLayer+1:-wallReflexionLayer-2] *= 1 - 1.99 * wallReflectionCoefficient
     velocityFieldY[wallReflexionLayer+1:-wallReflexionLayer-2, wallReflexionLayer+1] *= 1 - 1.99 * wallReflectionCoefficient
@@ -250,8 +237,8 @@ def updateSpeakerPressure(pressureField, phase):
     amplitude = REFERENCE_PRESSURE * (10 ** (speakerVolume / 20))
     radius = speakerRadius / (2 * posStepSize)
 
-    for y in range(int(speakerPos.y / posStepSize - (posStepSize/2)  - radius), int(speakerPos.y / posStepSize - (posStepSize/2) + radius)):
-        for x in range(int(speakerPos.x / posStepSize - (posStepSize/2) - radius), int(speakerPos.x / posStepSize - (posStepSize/2) + radius)):
+    for y in range(int(round(speakerPos.y / posStepSize - (posStepSize/2)  - radius)), int(round(speakerPos.y / posStepSize - (posStepSize/2) + radius))):
+        for x in range(int(round(round(speakerPos.x / posStepSize - (posStepSize/2) - radius))), int(round(round(speakerPos.x / posStepSize - (posStepSize/2) + radius)))):
             if 0 <= x < numDiscretePosX and 0 <= y < numDiscretePosY:
                 distance = np.sqrt((x - speakerPos.x / posStepSize - (posStepSize/2) ) ** 2 + (y - speakerPos.y / posStepSize - (posStepSize/2) ) ** 2)
                 if distance <= radius:
@@ -289,9 +276,9 @@ def updateDisplayedField():
         if pressureIndex % 100 < 4:
             pressure_dB_cache = calcPressure_dB()
         if pressure_dB_cache is not None and pressure_dB_cache.ndim == 2:
-            norm = Normalize(vmin=50, vmax=90)
-            image.set_norm(norm)
             image.set_array(pressure_dB_cache[:-1, :-1])
+        norm = Normalize(vmin=50, vmax=90)
+        image.set_norm(norm)
         image.set_clim(50, 90)
         cbar.set_label('Sound Pressure Level (dB)')
 
@@ -299,6 +286,74 @@ def updateLegends(*args):
     canvas.draw_idle()
 
 fieldTarget.trace_add("write", updateLegends)
+
+def create_exclusion_mask():
+    mask = np.ones(pressureField.shape, dtype=bool)
+    
+    thickness = int(round(wallThickness / posStepSize))
+    mask[:thickness, :] = False
+    mask[-thickness-1:, :] = False
+    mask[:, :thickness] = False
+    mask[:, -thickness-1:] = False
+
+    for absorber in absorbers:
+        mask[absorber.startY:absorber.endY, absorber.startX:absorber.endX] = False
+
+    radius = int(round(speakerRadius / (2 * posStepSize)))
+    speakerX = int(round(speakerPos.x / posStepSize))
+    speakerY = int(round(speakerPos.y / posStepSize))
+    y, x = np.ogrid[-radius:radius+1, -radius:radius+1]
+    mask_area = x**2 + y**2 <= radius**2
+    mask[speakerY-radius:speakerY+radius+1, 
+         speakerX-radius:speakerX+radius+1] &= ~mask_area
+
+    return mask
+
+exclusion_mask = create_exclusion_mask()
+
+textElements = [
+    ax.text(0.05, 0.99, '', transform=ax.transAxes, color='white', fontsize=12, weight='bold', va='top'),  # time
+    ax.text(0.35, 0.99, '', transform=ax.transAxes, color=(0.3, 0.5, 1), fontsize=12, weight='bold', va='top'),  # max
+    ax.text(0.43, 0.99, '', transform=ax.transAxes, color='white', fontsize=12, weight='bold', va='top'),  # maxValue
+    ax.text(0.62, 0.99, '', transform=ax.transAxes, color='red', fontsize=12, weight='bold', va='top'),  # min
+    ax.text(0.69, 0.99, '', transform=ax.transAxes, color='white', fontsize=12, weight='bold', va='top')  # minValue
+]
+
+
+def updateText(simulatedTime, pressure_dB_cache):
+    selectedField = fieldTarget.get()
+    if selectedField == "dB Level" and pressure_dB_cache is not None:
+        max_dB = np.max(np.where(exclusion_mask, pressure_dB_cache, -np.inf))
+        min_dB = np.min(np.where(exclusion_mask, pressure_dB_cache, np.inf))
+
+        textElements[0].set_text(f'Time: {simulatedTime:2.2f} ms, ')
+        textElements[1].set_text('Max: ')
+        textElements[2].set_text(f'{max_dB:2.2f} dB, ')
+        textElements[3].set_text('Min: ')
+        textElements[4].set_text(f'{min_dB:2.2f} dB')
+    else:
+        textElements[0].set_text(f'Time: {simulatedTime:2.2f} ms')
+        textElements[1].set_text('')
+        textElements[2].set_text('')
+        textElements[3].set_text('')
+        textElements[4].set_text('')
+
+def updateMarkers(pressure_dB_cache):
+    selectedField = fieldTarget.get()
+    if selectedField == "dB Level" and pressure_dB_cache is not None:
+        valid_pressure_dB = np.where(exclusion_mask, pressure_dB_cache, -np.inf)
+        max_dB_position = np.unravel_index(np.argmax(valid_pressure_dB, axis=None), valid_pressure_dB.shape)
+        valid_pressure_dB = np.where(exclusion_mask, pressure_dB_cache, np.inf)
+        min_dB_position = np.unravel_index(np.argmin(valid_pressure_dB, axis=None), valid_pressure_dB.shape)
+
+        max_dB_marker.set_data([max_dB_position[1]], [max_dB_position[0]])
+        min_dB_marker.set_data([min_dB_position[1]], [min_dB_position[0]])
+
+        max_dB_marker.set_visible(True)
+        min_dB_marker.set_visible(True)
+    else:
+        max_dB_marker.set_visible(False)
+        min_dB_marker.set_visible(False)
 
 
 def update(frame):
@@ -308,22 +363,11 @@ def update(frame):
             currentPhase = updateSimulation(pressureField, velocityFieldX, velocityFieldY, currentPhase)
             simulatedTime += timeStepSize * 1000
 
-        selectedField = fieldTarget.get()
-        if selectedField == "dB Level" and pressure_dB_cache is not None:
-            max_dB = np.max(pressure_dB_cache[5:-5, 5:-5])
-            min_dB = np.min(pressure_dB_cache[5:-5, 5:-5])
-            text = (
-                f'Time: {simulatedTime:2.2f} ms, '
-                f'Max: {max_dB:2.2f} dB, '
-                f'Min: {min_dB:2.2f} dB'
-            )
-            timeAnnotation.set_text(text)
-        else:
-            timeAnnotation.set_text(f'Time: {simulatedTime:2.2f} ms')
-
+        updateText(simulatedTime, pressure_dB_cache)
+        updateMarkers(pressure_dB_cache)
 
     updateDisplayedField()
-    return [image, speakerCircle, timeAnnotation] + wallRects + absorberPatches
+    return [image, speakerCircle] + textElements + [max_dB_marker, min_dB_marker] + wallRects + absorberPatches
 
 def updateFrequency(event):
     global speakerFrequency, omega
