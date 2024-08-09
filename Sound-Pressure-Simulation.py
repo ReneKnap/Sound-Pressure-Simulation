@@ -258,9 +258,9 @@ class Speaker:
 
 
 speakers = [
-    Speaker(Position(0.5, 2), 0.3, frequency=33.63, volume=85.0, minFrequency=20.0, maxFrequency=20000.0),
-    Speaker(Position(3.0, 1.5), 0.4, frequency=233.63, volume=85.0, minFrequency=80.0, maxFrequency=20000.0),
-    Speaker(Position(4.0, 3.0), 0.2, frequency=33.63, volume=85.0, minFrequency=20.0, maxFrequency=80.0),
+    Speaker(Position(0.5, 1.8), 0.3, frequency=33.63, volume=85.0, minFrequency=20.0, maxFrequency=20000.0),
+    #Speaker(Position(3.0, 1.5), 0.4, frequency=33.63, volume=85.0, minFrequency=80.0, maxFrequency=20000.0),
+    #Speaker(Position(4.0, 3.0), 0.2, frequency=33.63, volume=85.0, minFrequency=20.0, maxFrequency=80.0),
 ]
 
 
