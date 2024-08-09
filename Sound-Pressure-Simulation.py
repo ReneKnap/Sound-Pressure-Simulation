@@ -2,7 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from matplotlib.widgets import Slider, Button
-from matplotlib.patches import Circle, Rectangle
+from matplotlib.patches import Circle, Rectangle, Ellipse, Polygon
+from matplotlib.path import Path as mplPath
 import tkinter as tk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from typing import NamedTuple
@@ -37,9 +38,6 @@ velocityFieldY = np.zeros((numDiscretePosY, numDiscretePosX))
 
 speakerRadius = 0.3  # m
 speakerPos = Position(0.5, 2)  # m
-speakerFrequency = 133.63   # Hz
-speakerVolume = 85.0  # dB
-omega = 2 * np.pi * speakerFrequency
 
 wallReflectionCoefficient = 0.8 # Proportion of reflection (0.0 to 1.0)
 wallPressureAbsorptionCoefficient = 0.2 # Proportion of pressure absorption (0.0 to 1.0)
@@ -112,26 +110,182 @@ canvas.get_tk_widget().config(width=1000, height=750)
 frameControls = tk.Frame(root)
 frameControls.pack(side=tk.TOP, pady=10)
 
+class RectangleShape:
+    def __init__(self, position, size):
+        self.position = position
+        self.size = size
+        self._discretePositions = None
+
+    def getDiscretePositions(self):
+        if self._discretePositions is None:
+            startX = int(round(self.position.x / posStepSize))
+            endX = int(round((self.position.x + self.size.width) / posStepSize))
+            startY = int(round(self.position.y / posStepSize))
+            endY = int(round((self.position.y + self.size.height) / posStepSize))
+            self._discretePositions = [(x, y) for y in range(startY, endY) for x in range(startX, endX)]
+        return self._discretePositions
+
+class EllipseShape:
+    def __init__(self, position, radiusX, radiusY):
+        self.position = position
+        self.radiusX = radiusX
+        self.radiusY = radiusY
+        self._discretePositions = None
+
+    def getDiscretePositions(self):
+        if self._discretePositions is None:
+            startX = int(round((self.position.x - self.radiusX) / posStepSize))
+            endX = int(round((self.position.x + self.radiusX) / posStepSize))
+            startY = int(round((self.position.y - self.radiusY) / posStepSize))
+            endY = int(round((self.position.y + self.radiusY) / posStepSize))
+
+            self._discretePositions = []
+            centerX = self.position.x / posStepSize
+            centerY = self.position.y / posStepSize
+            for y in range(startY, endY):
+                for x in range(startX, endX):
+                    ellipse_eq = ((x + 0.5 - centerX) ** 2 / (self.radiusX / posStepSize) ** 2 +
+                                  (y + 0.5 - centerY) ** 2 / (self.radiusY / posStepSize) ** 2)
+                    if ellipse_eq <= 1:
+                        self._discretePositions.append((x, y))
+        return self._discretePositions
+
+class PolygonShape:
+    def __init__(self, position, vertices):
+        self.position = position
+        self.vertices = np.array(vertices)
+        self._discretePositions = None
+
+    def getDiscretePositions(self):
+        if self._discretePositions is None:
+            absoluteVertices = self.vertices + np.array([self.position.x, self.position.y])
+            polygon_path = mplPath(absoluteVertices / posStepSize)
+            self._discretePositions = []
+            for y in range(numDiscretePosY):
+                for x in range(numDiscretePosX):
+                    if polygon_path.contains_point((x + 0.5, y + 0.5)):
+                        self._discretePositions.append((x, y))
+        return self._discretePositions
+
+
+class Absorber:
+    def __init__(self, shape, absorptionPressure=0.0, absorptionVelocity=0.0):
+        self.shape = shape
+        self.absorptionPressure = absorptionPressure
+        self.absorptionVelocity = absorptionVelocity
+
+        self.shape.position = Position(
+            self.shape.position.x + wallThickness,
+            self.shape.position.y + wallThickness)
+
+    def applyAbsorption(self, pressureField, velocityFieldX, velocityFieldY):
+        discrete_positions = self.shape.getDiscretePositions()
+        for x, y in discrete_positions:
+            pressureField[y, x] *= (1 - self.absorptionPressure)
+            velocityFieldX[y, x] *= (1 - self.absorptionVelocity)
+            velocityFieldY[y, x] *= (1 - self.absorptionVelocity)
+
+    def getPatch(self):
+        if isinstance(self.shape, RectangleShape):
+            startX, startY = self.shape.position.x / posStepSize, self.shape.position.y / posStepSize
+            width, height = self.shape.size.width / posStepSize, self.shape.size.height / posStepSize
+            return Rectangle((startX - 0.6, startY - 0.6), width, height, color='red', fill=False)
+        elif isinstance(self.shape, EllipseShape):
+            centerX, centerY = self.shape.position.x / posStepSize, self.shape.position.y / posStepSize
+            width, height = self.shape.radiusX * 2 / posStepSize, self.shape.radiusY * 2 / posStepSize
+            return Ellipse((centerX - 0.6, centerY - 0.6), width, height, color='red', fill=False)
+        elif isinstance(self.shape, PolygonShape):
+            absoluteVertices = self.shape.vertices + np.array([self.shape.position.x, self.shape.position.y])
+            return Polygon(absoluteVertices / posStepSize, color='red', fill=False)
+
+absorbers = [
+    Absorber(RectangleShape(Position(0.0, 0.0), Size(0.5, 0.5)), absorptionPressure=0.0, absorptionVelocity=0.2),
+    Absorber(RectangleShape(Position(0.0, 3.1), Size(0.5, 0.5)), absorptionPressure=0.0, absorptionVelocity=0.2),
+    Absorber(RectangleShape(Position(4.7, 0.0), Size(0.4, 1.9)), absorptionPressure=0.0, absorptionVelocity=0.2),
+    Absorber(RectangleShape(Position(1.5, 3.45), Size(1.6, 0.15)), absorptionPressure=0.0, absorptionVelocity=0.2),
+    Absorber(RectangleShape(Position(1.5, 0.0), Size(1.6, 0.15)), absorptionPressure=0.0, absorptionVelocity=0.2)
+    #Absorber(RectangleShape(Position(0.2, 0.2), Size(0.5, 0.5)), absorptionPressure=0.0, absorptionVelocity=0.2),
+    #Absorber(EllipseShape(Position(1.8, 1.6), radiusX=0.3, radiusY=0.5), absorptionPressure=0.0, absorptionVelocity=0.2),
+    #Absorber(PolygonShape(Position(2.5, 2.5), vertices=[[0, 0], [0.5, 0.2], [0.3, 0.8], [0, 0.6]]), absorptionPressure=0.0, absorptionVelocity=0.2)
+]
+
+absorberPatches = [ax.add_patch(absorber.getPatch()) for absorber in absorbers]
+
+class Speaker:
+    def __init__(self, position, radius, frequency, volume, minFrequency, maxFrequency):
+        self.position = Position(
+            position.x + wallThickness,
+            position.y + wallThickness
+        )
+        self.radius = radius
+        self.frequency = frequency
+        self.volume = volume
+        self.minFrequency = minFrequency
+        self.maxFrequency = maxFrequency
+        self.omega = 2 * np.pi * self.frequency
+
+    def updateFrequency(self, frequency):
+        self.frequency = frequency
+        self.omega = 2 * np.pi * self.frequency
+
+    def updateVolume(self, volume):
+        self.volume = volume
+
+    def updatePressure(self, pressureField, phase):
+        if not (self.minFrequency <= self.frequency <= self.maxFrequency):
+            return
+
+        amplitude = REFERENCE_PRESSURE * (10 ** (self.volume / 20))
+        centerX = self.position.x / posStepSize
+        centerY = self.position.y / posStepSize
+        radius = self.radius / (2 * posStepSize)
+
+        startX = int(round(centerX - radius))
+        endX = int(round(centerX + radius))
+        startY = int(round(centerY - radius))
+        endY = int(round(centerY + radius))
+
+        for y in range(startY, endY):
+            for x in range(startX, endX):
+                distance = np.sqrt((x + 0.5 - centerX) ** 2 + (y + 0.5 - centerY) ** 2)
+                if distance <= radius:
+                    pressureField[y, x] = amplitude * np.sin(phase)
+
+    def getPatch(self):
+        centerX, centerY = self.position.x / posStepSize, self.position.y / posStepSize
+        radius = self.radius / posStepSize / 2
+        return Circle((centerX, centerY), radius, color='orange', fill=False, linewidth=2)
+
+
+speakers = [
+    Speaker(Position(0.5, 2), 0.3, frequency=33.63, volume=85.0, minFrequency=20.0, maxFrequency=20000.0),
+    Speaker(Position(3.0, 1.5), 0.4, frequency=233.63, volume=85.0, minFrequency=80.0, maxFrequency=20000.0),
+    Speaker(Position(4.0, 3.0), 0.2, frequency=33.63, volume=85.0, minFrequency=20.0, maxFrequency=80.0),
+]
+
+
+speakerPatches = [ax.add_patch(speaker.getPatch()) for speaker in speakers]
+
 speakerFrequencyLabel = tk.Label(frameControls, text="Frequency (Hz)")
 speakerFrequencyLabel.pack(side=tk.LEFT, padx=5)
 
 speakerFrequencyEntry = tk.Entry(frameControls, width=8)
-speakerFrequencyEntry.insert(0, str(speakerFrequency))
+speakerFrequencyEntry.insert(0, str(speakers[0].frequency))
 speakerFrequencyEntry.pack(side=tk.LEFT, padx=5)
 
 speakerFrequencySlider = tk.Scale(frameControls, from_=lowestFrequency, to=highestFrequency, orient=tk.HORIZONTAL, length=200, resolution=0.01)
-speakerFrequencySlider.set(speakerFrequency)
+speakerFrequencySlider.set(speakers[0].frequency)
 speakerFrequencySlider.pack(side=tk.LEFT, padx=5)
 
 speakerVolumeLabel = tk.Label(frameControls, text="Volume (dB)")
 speakerVolumeLabel.pack(side=tk.LEFT, padx=5)
 
 speakerVolumeEntry = tk.Entry(frameControls, width=8)
-speakerVolumeEntry.insert(0, str(speakerVolume))
+speakerVolumeEntry.insert(0, str(speakers[0].volume))
 speakerVolumeEntry.pack(side=tk.LEFT, padx=5)
 
 speakerVolumeSlider = tk.Scale(frameControls, from_=0, to=120, orient=tk.HORIZONTAL, length=200, resolution=0.01)
-speakerVolumeSlider.set(speakerVolume) 
+speakerVolumeSlider.set(speakers[0].volume)
 speakerVolumeSlider.pack(side=tk.LEFT, padx=5)
 
 resetButton = tk.Button(frameControls, text="Reset", command=lambda: resetSimulation(None))
@@ -146,44 +300,6 @@ fieldTarget.set("Pressure")
 fieldOptions = ["Pressure", "Velocity X", "Velocity Y", "dB Level"]
 fieldMenu = tk.OptionMenu(frameControls, fieldTarget, *fieldOptions)
 fieldMenu.pack(side=tk.LEFT, padx=15)
-
-
-class Absorber:
-    def __init__(self, position, size, absorptionPressure = 0.0, absorptionVelocity = 0.0):
-        self.position = position
-        self.size = size
-        self.absorptionPressure = absorptionPressure
-        self.absorptionVelocity = absorptionVelocity
-        self.patch = None # Store the Rectangle object
-        self.startX = int(round(position.x / posStepSize))
-        self.endX = int(round((position.x + size.width) / posStepSize))
-        self.startY = int(round(position.y / posStepSize))
-        self.endY = int(round((position.y + size.height) / posStepSize))
-
-    def applyAbsorption(self, pressureField, velocityFieldX, velocityFieldY):
-        pressureField[self.startY:self.endY, self.startX:self.endX] *= (1 - self.absorptionPressure)
-        velocityFieldX[self.startY:self.endY, self.startX:self.endX] *= (1 - self.absorptionVelocity)
-        velocityFieldY[self.startY:self.endY, self.startX:self.endX] *= (1 - self.absorptionVelocity)
-    
-    def getPatch(self):
-        if not self.patch:
-            self.patch = Rectangle((self.startX - 0.6, self.startY - 0.6),
-                                   int(round(self.size.width / posStepSize)), int(round(self.size.height / posStepSize)),
-                                   color='red', fill=False)
-        return self.patch
-
-absorbers = [
-    Absorber(Position(0.2, 0.2), Size(0.5, 0.5), absorptionPressure=0.0, absorptionVelocity=0.2),
-    Absorber(Position(0.2, 3.3), Size(0.5, 0.5), absorptionPressure=0.0, absorptionVelocity=0.2),
-    Absorber(Position(4.9, 0.2), Size(0.4, 1.9), absorptionPressure=0.0, absorptionVelocity=0.2),
-    Absorber(Position(1.7, 3.65), Size(1.6, 0.15), absorptionPressure=0.0, absorptionVelocity=0.2),
-    Absorber(Position(1.7, 0.2), Size(1.6, 0.15), absorptionPressure=0.0, absorptionVelocity=0.2)
-]
-roomWidth = 5.1  # m
-roomHeight = 3.6  # m
-wallThickness = 0.2  # m
-
-absorberPatches = [ax.add_patch(absorber.getPatch()) for absorber in absorbers]
 
 def updatePressureHistory(pressureField):
     global pressureHistory, pressureIndex
@@ -248,11 +364,15 @@ def updateSimulation(pressureField, velocityFieldX, velocityFieldY, currentPhase
     updatePressureHistory(pressureField)
     calcFiniteDifferenceTimeDomain(pressureField, velocityFieldX, velocityFieldY)
     applyBoundaryConditions(pressureField, velocityFieldX, velocityFieldY)
-    updateSpeakerPressure(pressureField, currentPhase)
+
     for absorber in absorbers:
         absorber.applyAbsorption(pressureField, velocityFieldX, velocityFieldY)
 
-    currentPhase += omega * timeStepSize
+    for speaker in speakers:
+        speaker.updatePressure(pressureField, currentPhase)
+
+    reference_omega = speakers[0].omega
+    currentPhase += reference_omega * timeStepSize
     currentPhase %= 2 * np.pi
 
     return currentPhase
@@ -287,7 +407,7 @@ def updateLegends(*args):
 
 fieldTarget.trace_add("write", updateLegends)
 
-def create_exclusion_mask():
+def createExclusionMask():
     mask = np.ones(pressureField.shape, dtype=bool)
     
     thickness = int(round(wallThickness / posStepSize))
@@ -297,19 +417,27 @@ def create_exclusion_mask():
     mask[:, -thickness-1:] = False
 
     for absorber in absorbers:
-        mask[absorber.startY:absorber.endY, absorber.startX:absorber.endX] = False
+        discrete_positions = absorber.shape.getDiscretePositions()
+        for x, y in discrete_positions:
+            mask[y, x] = False
 
-    radius = int(round(speakerRadius / (2 * posStepSize)))
-    speakerX = int(round(speakerPos.x / posStepSize))
-    speakerY = int(round(speakerPos.y / posStepSize))
-    y, x = np.ogrid[-radius:radius+1, -radius:radius+1]
-    mask_area = x**2 + y**2 <= radius**2
-    mask[speakerY-radius:speakerY+radius+1, 
-         speakerX-radius:speakerX+radius+1] &= ~mask_area
+    for speaker in speakers:
+        centerX = speaker.position.x / posStepSize
+        centerY = speaker.position.y / posStepSize
+        radius = speaker.radius / posStepSize
+        startX = int(round(centerX - radius))
+        endX = int(round(centerX + radius))
+        startY = int(round(centerY - radius))
+        endY = int(round(centerY + radius))
+        for y in range(startY, endY):
+            for x in range(startX, endX):
+                distance = np.sqrt((x + 0.5 - centerX) ** 2 + (y + 0.5 - centerY) ** 2)
+                if distance <= radius:
+                    mask[y, x] = False
 
     return mask
 
-exclusion_mask = create_exclusion_mask()
+exclusion_mask = createExclusionMask()
 
 textElements = [
     ax.text(0.05, 0.99, '', transform=ax.transAxes, color='white', fontsize=12, weight='bold', va='top'),  # time
@@ -367,14 +495,14 @@ def update(frame):
         updateMarkers(pressure_dB_cache)
 
     updateDisplayedField()
-    return [image, speakerCircle] + textElements + [max_dB_marker, min_dB_marker] + wallRects + absorberPatches
+    return [image] + speakerPatches + textElements + [max_dB_marker, min_dB_marker] + wallRects + absorberPatches
 
 def updateFrequency(event):
-    global speakerFrequency, omega
-    speakerFrequency = float(speakerFrequencySlider.get())
-    omega = 2 * np.pi * speakerFrequency
+    newFrequency = float(speakerFrequencySlider.get())
+    for speaker in speakers:
+        speaker.updateFrequency(newFrequency)
     speakerFrequencyEntry.delete(0, tk.END)
-    speakerFrequencyEntry.insert(0, str(speakerFrequency))
+    speakerFrequencyEntry.insert(0, str(newFrequency))
 
 def updateFrequencyFromEntry(event):
     try:
@@ -386,10 +514,11 @@ def updateFrequencyFromEntry(event):
         pass
 
 def updateVolume(event):
-    global speakerVolume
-    speakerVolume = float(speakerVolumeSlider.get())
+    for speaker in speakers:
+        speaker.updateVolume(float(speakerVolumeSlider.get()))
+    
     speakerVolumeEntry.delete(0, tk.END)
-    speakerVolumeEntry.insert(0, str(speakerVolume))
+    speakerVolumeEntry.insert(0, str(speakerVolumeSlider.get()))
 
 
 def updateVolumeFromEntry(event):
@@ -416,7 +545,6 @@ def toggleSimulation(event):
         stopButton.config(text='Stop')
     else:
         stopButton.config(text='Start')
-
 
 speakerFrequencySlider.config(command=updateFrequency)
 speakerVolumeSlider.config(command=updateVolume)
