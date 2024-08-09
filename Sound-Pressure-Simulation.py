@@ -23,7 +23,7 @@ REFERENCE_PRESSURE = 20e-6  # Reference pressure in Pascals for 0 dB
 lowestFrequency = 20.0  # Hz
 highestFrequency = 2000.0  # Hz
 
-roomWidth = 5.0  # m
+roomWidth = 5.1  # m
 roomHeight = 3.6   # m
 wallThickness = 0.2  # m
 
@@ -37,7 +37,7 @@ velocityFieldY = np.zeros((numDiscretePosY, numDiscretePosX))
 
 speakerRadius = 0.3  # m
 speakerPos = Position(0.5, 2)  # m
-speakerFrequency = 31.76   # Hz
+speakerFrequency = 33.63   # Hz
 speakerVolume = 85.0  # dB
 omega = 2 * np.pi * speakerFrequency
 
@@ -98,7 +98,15 @@ speakerCircle = Circle(
     (speakerPos.x / posStepSize , speakerPos.y / posStepSize), radius=speakerRadius / posStepSize / 2, color='orange', fill=False, linewidth=2)
 ax.add_patch(speakerCircle)
 
-timeAnnotation = ax.text(0.05, 0.99, '', transform=ax.transAxes, color='white', fontsize=12, weight='bold', va='top')
+timeAnnotation = ax.text(
+    0.05, 0.99, '', 
+    transform=ax.transAxes, 
+    color='white', 
+    fontsize=12, 
+    weight='bold', 
+    va='top',
+    bbox=dict(facecolor='dimgray', alpha=0.5, edgecolor='none', boxstyle='round,pad=0.3')
+)
 
 cbar = fig.colorbar(image, ax=ax, orientation='vertical')
 cbar.set_label('Druck (Pa)')
