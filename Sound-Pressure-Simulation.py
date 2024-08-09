@@ -6,6 +6,7 @@ from matplotlib.patches import Circle, Rectangle
 import tkinter as tk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from typing import NamedTuple
+from matplotlib.colors import Normalize
 
 class Position(NamedTuple):
     x: float
@@ -15,14 +16,16 @@ class Size(NamedTuple):
     width: float
     height: float
 
-posStepSize = 0.05
+posStepSize = 0.05  # m
 SPEED_OF_SOUND = 346.3  # Speed of sound in air in m/s at 25°C
-timeStepSize = 0.1 * posStepSize / SPEED_OF_SOUND
+timeStepSize = 0.1 * posStepSize / SPEED_OF_SOUND  # s
 REFERENCE_PRESSURE = 20e-6  # Reference pressure in Pascals for 0 dB
+lowestFrequency = 20.0  # Hz
+highestFrequency = 2000.0  # Hz
 
 roomWidth = 5.0  # m
 roomHeight = 3.6   # m
-wallThickness = 0.2
+wallThickness = 0.2  # m
 
 # Room size plus 2 times wall thickness
 numDiscretePosX = int(roomWidth / posStepSize) + 1 + int(wallThickness / posStepSize) * 2
@@ -33,9 +36,9 @@ velocityFieldX = np.zeros((numDiscretePosY, numDiscretePosX))
 velocityFieldY = np.zeros((numDiscretePosY, numDiscretePosX))
 
 speakerRadius = 0.3  # m
-speakerPos = Position(0.5, 0.5)  # m
-speakerFrequency = 30.0  # Hz
-speakerVolume = 70.0  # dB
+speakerPos = Position(0.5, 2)  # m
+speakerFrequency = 31.76   # Hz
+speakerVolume = 85.0  # dB
 omega = 2 * np.pi * speakerFrequency
 
 wallReflectionCoefficient = 0.8 # Proportion of reflection (0.0 to 1.0)
@@ -45,6 +48,13 @@ wallVelocityAbsorptionCoefficient = 0.2 # Proportion of velocity absorption (0.0
 animRunning = True
 simulatedTime = 0.0  # ms
 currentPhase = 0
+
+pressureHistoryDuration = 1.0 / lowestFrequency  # s
+pressureHistoryLength = int(pressureHistoryDuration / timeStepSize)
+pressureHistory = [np.zeros((numDiscretePosY, numDiscretePosX)) for _ in range(pressureHistoryLength)]
+pressureIndex = 0
+pressure_dB_cache = None
+
 
 dpi = 100 
 figWidth = 400 / dpi
@@ -109,7 +119,7 @@ speakerFrequencyEntry = tk.Entry(frameControls, width=8)
 speakerFrequencyEntry.insert(0, str(speakerFrequency))
 speakerFrequencyEntry.pack(side=tk.LEFT, padx=5)
 
-speakerFrequencySlider = tk.Scale(frameControls, from_=20, to=2000, orient=tk.HORIZONTAL, length=200, resolution=0.01)
+speakerFrequencySlider = tk.Scale(frameControls, from_=lowestFrequency, to=highestFrequency, orient=tk.HORIZONTAL, length=200, resolution=0.01)
 speakerFrequencySlider.set(speakerFrequency)
 speakerFrequencySlider.pack(side=tk.LEFT, padx=5)
 
@@ -133,7 +143,7 @@ stopButton.pack(side=tk.LEFT, padx=15)
 fieldTarget = tk.StringVar(root)
 fieldTarget.set("Pressure")
 
-fieldOptions = ["Pressure", "Velocity X", "Velocity Y"]
+fieldOptions = ["Pressure", "Velocity X", "Velocity Y", "dB Level"]
 fieldMenu = tk.OptionMenu(frameControls, fieldTarget, *fieldOptions)
 fieldMenu.pack(side=tk.LEFT, padx=15)
 
@@ -145,10 +155,10 @@ class Absorber:
         self.absorptionPressure = absorptionPressure
         self.absorptionVelocity = absorptionVelocity
         self.patch = None # Store the Rectangle object
-        self.startX = int(position.x / posStepSize)
-        self.endX = int((position.x + size.width) / posStepSize)
-        self.startY = int(position.y / posStepSize)
-        self.endY = int((position.y + size.height) / posStepSize)
+        self.startX = int(position.x / posStepSize) +1
+        self.endX = int((position.x + size.width) / posStepSize) +1
+        self.startY = int(position.y / posStepSize) +1
+        self.endY = int((position.y + size.height) / posStepSize) +1
 
     def applyAbsorption(self, pressureField, velocityFieldX, velocityFieldY):
         pressureField[self.startY:self.endY, self.startX:self.endX] *= (1 - self.absorptionPressure)
@@ -169,11 +179,29 @@ class Absorber:
         return self.patch
 
 absorbers = [
-    Absorber(Position(4.6, 0.2), Size(0.6, 0.6), absorptionPressure=0.0, absorptionVelocity=0.1),
-    Absorber(Position(4.6, 3.2), Size(0.6, 0.6), absorptionPressure=0.0, absorptionVelocity=0.1)
+    Absorber(Position(0.2, 0.2), Size(0.5, 0.5), absorptionPressure=0.0, absorptionVelocity=0.35),
+    Absorber(Position(0.2, 3.3), Size(0.5, 0.5), absorptionPressure=0.0, absorptionVelocity=0.35),
+    Absorber(Position(4.8, 0.2), Size(0.4, 1.88), absorptionPressure=0.0, absorptionVelocity=0.35),
+    Absorber(Position(1.5, 3.64), Size(1.6, 0.16), absorptionPressure=0.0, absorptionVelocity=0.05),
+    Absorber(Position(1.5, 0.2), Size(1.6, 0.16), absorptionPressure=0.0, absorptionVelocity=0.05)
 ]
 
 absorberPatches = [ax.add_patch(absorber.getPatch()) for absorber in absorbers]
+
+def updatePressureHistory(pressureField):
+    global pressureHistory, pressureIndex
+    pressureHistory[pressureIndex] = pressureField.copy()
+    pressureIndex = (pressureIndex + 1) % len(pressureHistory)
+
+def calcPressure_dB():
+    global pressureHistory
+    pressureHistoryNp = np.array(pressureHistory) 
+    maxPressure = np.amax(pressureHistoryNp, axis=0)
+    minPressure = np.amin(pressureHistoryNp, axis=0)
+    difPressure = abs(maxPressure - minPressure)/2
+    pressure_dB = 20 * np.log10(difPressure / REFERENCE_PRESSURE + 1e-12) # + 1e-12 to avoid log(0)
+    print(np.max(pressure_dB[5:-5, 5:-5]), " ", np.min(pressure_dB[5:-5, 5:-5]))
+    return pressure_dB
 
 def calcFiniteDifferenceTimeDomain(pressureField, velocityFieldX, velocityFieldY):
     velocityFieldX[1:, :] -= timeStepSize / posStepSize * (pressureField[1:, :] - pressureField[:-1, :])
@@ -214,20 +242,20 @@ def updateSpeakerPressure(pressureField, phase):
     amplitude = REFERENCE_PRESSURE * (10 ** (speakerVolume / 20))
     radius = speakerRadius / (2 * posStepSize)
 
-    for y in range(int(speakerPos.y / posStepSize  - radius), int(speakerPos.y / posStepSize + radius)):
-        for x in range(int(speakerPos.x / posStepSize  - radius), int(speakerPos.x / posStepSize + radius)):
+    for y in range(int(speakerPos.y / posStepSize - (posStepSize/2)  - radius), int(speakerPos.y / posStepSize - (posStepSize/2) + radius)):
+        for x in range(int(speakerPos.x / posStepSize - (posStepSize/2) - radius), int(speakerPos.x / posStepSize - (posStepSize/2) + radius)):
             if 0 <= x < numDiscretePosX and 0 <= y < numDiscretePosY:
-                distance = np.sqrt((x - speakerPos.x / posStepSize ) ** 2 + (y - speakerPos.y / posStepSize ) ** 2)
+                distance = np.sqrt((x - speakerPos.x / posStepSize - (posStepSize/2) ) ** 2 + (y - speakerPos.y / posStepSize - (posStepSize/2) ) ** 2)
                 if distance <= radius:
-                    pressureField[y, x] += amplitude * np.sin(phase)
+                    pressureField[y, x] = amplitude * np.sin(phase)
 
 def updateSimulation(pressureField, velocityFieldX, velocityFieldY, currentPhase):
+    updatePressureHistory(pressureField)
     calcFiniteDifferenceTimeDomain(pressureField, velocityFieldX, velocityFieldY)
     applyBoundaryConditions(pressureField, velocityFieldX, velocityFieldY)
     updateSpeakerPressure(pressureField, currentPhase)
     for absorber in absorbers:
         absorber.applyAbsorption(pressureField, velocityFieldX, velocityFieldY)
-
 
     currentPhase += omega * timeStepSize
     currentPhase %= 2 * np.pi
@@ -235,6 +263,7 @@ def updateSimulation(pressureField, velocityFieldX, velocityFieldY, currentPhase
     return currentPhase
 
 def updateDisplayedField():
+    global pressure_dB_cache
     selectedField = fieldTarget.get()
     if selectedField == "Pressure":
         image.set_array(pressureField[:-1, :-1])
@@ -248,6 +277,15 @@ def updateDisplayedField():
         image.set_array(velocityFieldY[:-1, :-1])
         image.set_clim(-0.001, 0.001)
         cbar.set_label('Particle velocity in Y (m/s)')
+    elif selectedField == "dB Level":
+        if pressureIndex % 100 < 4:
+            pressure_dB_cache = calcPressure_dB()
+        if pressure_dB_cache is not None and pressure_dB_cache.ndim == 2:
+            norm = Normalize(vmin=50, vmax=90)
+            image.set_norm(norm)
+            image.set_array(pressure_dB_cache[:-1, :-1])
+        image.set_clim(50, 90)
+        cbar.set_label('Sound Pressure Level (dB)')
 
 def updateLegends(*args):
     canvas.draw_idle()
@@ -278,7 +316,7 @@ def updateFrequency(event):
 def updateFrequencyFromEntry(event):
     try:
         val = float(speakerFrequencyEntry.get())
-        if 20.0 <= val <= 2000.0:
+        if lowestFrequency <= val <= highestFrequency:
             speakerFrequencySlider.set(val)
             updateFrequency(None)
     except ValueError:
