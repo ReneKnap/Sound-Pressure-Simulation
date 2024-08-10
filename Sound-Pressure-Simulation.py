@@ -464,16 +464,20 @@ def update(frame):
     updateDisplayedField()
     return [image] + speakerPatches + textElements + [max_dB_marker, min_dB_marker] + wallRects + absorberPatches
 
-controlAllSpeakersFlag = tk.BooleanVar(value=True)
+controlIndividualSpeakersFlag = tk.BooleanVar(value=False)
 
-controlAllSpeakersToggle = tk.Checkbutton(frameControls, text="Control All Speakers", variable=controlAllSpeakersFlag)
+controlAllSpeakersToggle = tk.Checkbutton(frameControls, text="Individual Speaker Control", variable=controlIndividualSpeakersFlag)
 controlAllSpeakersToggle.pack(side=tk.LEFT, padx=5)
 
 selectedSpeaker = tk.StringVar()
 selectedSpeaker.set(speakerNames[0])
 
 speakerMenu = tk.OptionMenu(frameControls, selectedSpeaker, *speakerNames)
-speakerMenu.pack(side=tk.LEFT, padx=5)
+def toggleSpeakerMenu():
+    if controlIndividualSpeakersFlag.get():
+        speakerMenu.pack(side=tk.LEFT, padx=5)  # Zeige die Dropdown-Liste
+    else:
+        speakerMenu.pack_forget()  # Verberge die Dropdown-Liste
 
 speakerFrequencyLabel = tk.Label(frameSlider, text="Frequency (Hz)")
 speakerFrequencyLabel.pack(side=tk.LEFT, padx=5)
@@ -497,8 +501,12 @@ speakerVolumeSlider = tk.Scale(frameSlider, from_=0, to=120, orient=tk.HORIZONTA
 speakerVolumeSlider.set(speakers[0].volume)
 speakerVolumeSlider.pack(side=tk.LEFT, padx=5)
 
+controlIndividualSpeakersFlag.trace_add("write", lambda *args: toggleSpeakerMenu())
+toggleSpeakerMenu()
+
+
 def updateSelectedSpeaker(*args):
-    if not controlAllSpeakersFlag.get():  # Nur bei Einzelsteuerung aktualisieren
+    if controlIndividualSpeakersFlag.get():
         index = speakerNames.index(selectedSpeaker.get())
         speaker = speakers[index]
         speakerFrequencySlider.set(speaker.frequency)
@@ -510,15 +518,14 @@ def updateSelectedSpeaker(*args):
 
 selectedSpeaker.trace_add("write", updateSelectedSpeaker)
 
-
 def updateFrequency(event):
     newFrequency = float(speakerFrequencySlider.get())
-    if controlAllSpeakersFlag.get():
-        for speaker in speakers:
-            speaker.updateFrequency(newFrequency)
-    else:
+    if controlIndividualSpeakersFlag.get():
         index = speakerNames.index(selectedSpeaker.get())
         speakers[index].updateFrequency(newFrequency)
+    else:
+        for speaker in speakers:
+            speaker.updateFrequency(newFrequency)
 
     speakerFrequencyEntry.delete(0, tk.END)
     speakerFrequencyEntry.insert(0, str(newFrequency))
@@ -534,12 +541,12 @@ def updateFrequencyFromEntry(event):
 
 def updateVolume(event):
     newVolume = float(speakerVolumeSlider.get())
-    if controlAllSpeakersFlag.get():
-        for speaker in speakers:
-            speaker.updateVolume(newVolume)
-    else:
+    if controlIndividualSpeakersFlag.get():
         index = speakerNames.index(selectedSpeaker.get())
         speakers[index].updateVolume(newVolume)
+    else:
+        for speaker in speakers:
+            speaker.updateVolume(newVolume)
 
     speakerVolumeEntry.delete(0, tk.END)
     speakerVolumeEntry.insert(0, str(newVolume))
