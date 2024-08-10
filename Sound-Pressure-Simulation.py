@@ -45,6 +45,7 @@ wallVelocityAbsorptionCoefficient = 0.2 # Proportion of velocity absorption (0.0
 
 animRunning = True
 simulatedTime = 0.0  # ms
+timeSkip = 4
 
 pressureHistoryDuration = 1.0 / lowestFrequency  # s
 pressureHistoryLength = int(round(round(pressureHistoryDuration / timeStepSize)))
@@ -53,15 +54,18 @@ pressureIndex = 0
 pressure_dB_cache = None
 
 dpi = 100 
-figWidth = 400 / dpi
+figWidth = 700 / dpi
 figHeight = 300 / dpi
 
 root = tk.Tk()
 root.title('Sound Pressure Simulation')
-root.geometry("1050x900+10+10")
+root.geometry("1050x1280+10+10")
 
-frameAnimation = tk.Frame(root, width=400, height=300)
-frameAnimation.pack(side=tk.TOP, pady=10)
+frameAnimation = tk.Frame(root, width=500, height=350)
+frameAnimation.pack(side=tk.TOP, pady=0)
+
+frameTimePlot = tk.Frame(root, width=500, height=350)
+frameTimePlot.pack(side=tk.TOP, pady=0)
 
 fig, ax = plt.subplots(figsize=(figWidth, figHeight), dpi=dpi)
 image = ax.imshow(pressureField, cmap='viridis', vmin=-0.0025, vmax=0.0025, animated=True)
@@ -107,7 +111,7 @@ canvas.get_tk_widget().pack_propagate(0)
 canvas.get_tk_widget().config(width=1000, height=750)
 
 frameMain = tk.Frame(root)
-frameMain.pack(side=tk.TOP, pady=10)
+frameMain.pack(side=tk.BOTTOM, pady=10)
 
 frameControls = tk.Frame(frameMain)
 frameControls.pack(side=tk.TOP, pady=5)
@@ -451,18 +455,133 @@ def updateMarkers(pressure_dB_cache):
         max_dB_marker.set_visible(False)
         min_dB_marker.set_visible(False)
 
+ax2_xMin = -1000 * timeStepSize * 1000 * timeSkip
+ax2_xMax = 0
+fig2, ax2 = plt.subplots(figsize=(figWidth, figHeight), dpi=dpi)
+ax2.set_title('Pressure change over time')
+ax2.set_xlabel('Time (ms)')
+ax2.set_ylabel('Pressure (Pa)')
+ax2.set_ylim(-0.4, 0.4)
+ax2.set_xlim(ax2_xMin, ax2_xMax)
+ax2.grid(True)
+ax2.axhline(0, color='black', linewidth=2)
+
+timeLabels = np.arange(ax2_xMin, ax2_xMax + 1, 400 * timeStepSize * 1000)
+ax2.set_xticks(timeLabels)
+ax2.set_xticklabels(np.round(timeLabels, 1))
+
+timeData = np.linspace(ax2_xMin, ax2_xMax, 1000)
+pressureDataSpeaker = [0] * 1000
+pressureDataMic = [0] * 1000
+micOffsetInSteps = 0
+lineSpeaker, = ax2.plot(timeData, pressureDataSpeaker, lw=2, label="Speaker")
+lineMic, = ax2.plot(timeData, pressureDataMic, lw=2, color='red', label="Microphone")
+
+
+def onMicPositionChange(*args):
+    updateMicMarker()
+
+def validatePositiveOffset(value_if_allowed):
+    if value_if_allowed.isdigit() or (value_if_allowed.replace('.', '', 1).isdigit() and value_if_allowed.count('.') < 2):
+        if 50.0 >= float(value_if_allowed) >= 0:
+            return True
+    return False
+
+micX = tk.DoubleVar(value=1.2 + wallThickness)
+micY = tk.DoubleVar(value=1.8 + wallThickness)
+micOffset = tk.DoubleVar(value=0.0)
+micPositionLabel = tk.Label(frameControls, text="Mikrofon Position (X, Y):")
+micPositionLabel.pack(side=tk.LEFT, padx=5)
+micEntryX = tk.Entry(frameControls, textvariable=micX, width=5)
+micEntryX.pack(side=tk.LEFT, padx=5)
+micEntryY = tk.Entry(frameControls, textvariable=micY, width=5)
+micEntryY.pack(side=tk.LEFT, padx=5)
+
+micOffsetLabel = tk.Label(frameControls, text="Offset (ms):")
+micOffsetLabel.pack(side=tk.LEFT, padx=5)
+vcmd = (root.register(validatePositiveOffset), '%P')
+micOffsetEntry = tk.Entry(frameControls, textvariable=micOffset, width=5, validate='key', validatecommand=vcmd)
+micOffsetEntry.pack(side=tk.LEFT, padx=5)
+
+micX.trace_add("write", onMicPositionChange)
+micY.trace_add("write", onMicPositionChange)
+micOffset.trace_add("write", lambda *args: applyMicOffset())
+
+micMarker = Circle((micX.get() / posStepSize, micY.get() / posStepSize), radius=1, color='red', fill=False)
+ax.add_patch(micMarker)
+
+def updateMicMarker():
+    try:
+        micValueX = micX.get()
+        micValueY = micY.get()
+        if micValueX == "" or micValueY == "":
+            return 
+        micMarker.set_center((float(micValueX) / posStepSize, float(micValueY) / posStepSize))
+    except tk.TclError:
+        return
+
+
+def applyMicOffset():
+    global pressureDataMic, micOffsetInSteps
+    scaledOffset = micOffset.get() / (timeSkip * timeStepSize * 1000)
+    newOffsetInSteps = int(round(scaledOffset))
+    if newOffsetInSteps > micOffsetInSteps:
+        shift = newOffsetInSteps - micOffsetInSteps
+        pressureDataMic = pressureDataMic[shift:] + [0] * shift
+    elif newOffsetInSteps < micOffsetInSteps:
+        shift = micOffsetInSteps - newOffsetInSteps
+        pressureDataMic = [0] * shift + pressureDataMic[:-shift]
+
+    micOffsetInSteps = newOffsetInSteps
+
+
+def updateTimePlot():
+    global pressureDataMic, pressureDataSpeaker
+    index = speakerNames.index(selectedSpeaker.get())
+    speaker = speakers[index]#
+
+    centerSpeakerX = int(round(speaker.shape.position.x / posStepSize))
+    centerSpeakerY = int(round(speaker.shape.position.y / posStepSize))
+    
+    currentPressureSpeaker = pressureField[centerSpeakerY, centerSpeakerX]
+
+    centerMicX = int(round(micX.get() / posStepSize))
+    centerMicY = int(round(micY.get() / posStepSize))
+
+    centerMicX = np.clip(centerMicX, 0, numDiscretePosX - 1)
+    centerMicY = np.clip(centerMicY, 0, numDiscretePosY - 1)
+
+    currentPressureMic = pressureField[centerMicY, centerMicX]   
+      
+    pressureDataMic.pop(0)
+    if micOffsetInSteps == 0:
+        pressureDataMic.append(currentPressureMic)
+    else:
+        pressureDataMic.insert(-micOffsetInSteps, currentPressureMic)
+    pressureDataSpeaker.append(currentPressureSpeaker)
+    pressureDataSpeaker.pop(0)
+
+    lineSpeaker.set_ydata(pressureDataSpeaker)
+    lineMic.set_ydata(pressureDataMic)
+
+    handles, labels = ax2.get_legend_handles_labels()
+    if labels:
+        ax2.legend(loc="upper right")
+
 
 def update(frame):
     global pressureField, velocityFieldX, velocityFieldY, animRunning
     if animRunning:
-        for _ in range(4):
+        for _ in range(timeSkip):
             updateSimulation(pressureField, velocityFieldX, velocityFieldY)
 
+        updateTimePlot()
         updateText(simulatedTime, pressure_dB_cache)
         updateMarkers(pressure_dB_cache)
+        updateMicMarker()
 
     updateDisplayedField()
-    return [image] + speakerPatches + textElements + [max_dB_marker, min_dB_marker] + wallRects + absorberPatches
+    return [image] + speakerPatches + textElements + [max_dB_marker, min_dB_marker] + wallRects + absorberPatches + [lineSpeaker, lineMic, micMarker]
 
 controlIndividualSpeakersFlag = tk.BooleanVar(value=False)
 
@@ -475,9 +594,9 @@ selectedSpeaker.set(speakerNames[0])
 speakerMenu = tk.OptionMenu(frameControls, selectedSpeaker, *speakerNames)
 def toggleSpeakerMenu():
     if controlIndividualSpeakersFlag.get():
-        speakerMenu.pack(side=tk.LEFT, padx=5)  # Zeige die Dropdown-Liste
+        speakerMenu.pack(side=tk.LEFT, padx=5)
     else:
-        speakerMenu.pack_forget()  # Verberge die Dropdown-Liste
+        speakerMenu.pack_forget()
 
 speakerFrequencyLabel = tk.Label(frameSlider, text="Frequency (Hz)")
 speakerFrequencyLabel.pack(side=tk.LEFT, padx=5)
@@ -562,12 +681,19 @@ def updateVolumeFromEntry(event):
         pass
 
 def resetSimulation(event):
-    global pressureField, velocityFieldX, velocityFieldY, currentPhase
+    global pressureField, velocityFieldX, velocityFieldY, currentPhase, pressureDataMic, pressureDataSpeaker
+   
     pressureField = np.zeros((numDiscretePosY, numDiscretePosX))
     velocityFieldX = np.zeros((numDiscretePosY, numDiscretePosX))
     velocityFieldY = np.zeros((numDiscretePosY, numDiscretePosX))
     currentPhase = 0
     simulatedTime = 0.0
+
+    pressureDataMic = [0] * 1000
+    pressureDataSpeaker = [0] * 1000
+    lineSpeaker.set_ydata(pressureDataSpeaker)
+    lineMic.set_ydata(pressureDataMic)
+    canvas2.draw_idle()
 
 def toggleSimulation(event):
     global animRunning
@@ -585,5 +711,11 @@ speakerVolumeEntry.bind("<Return>", updateVolumeFromEntry)
 updateSelectedSpeaker()
 
 animation = FuncAnimation(fig, update, blit=True, interval=1, cache_frame_data=False)
+
+canvas2 = FigureCanvasTkAgg(fig2, master=frameTimePlot)
+canvas2.draw()
+canvas2.get_tk_widget().pack(side=tk.BOTTOM, fill=tk.NONE, expand=False)
+canvas2.get_tk_widget().pack_propagate(0)
+canvas2.get_tk_widget().config(width=1000, height=400)
 
 root.mainloop()
