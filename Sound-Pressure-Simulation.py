@@ -217,19 +217,20 @@ absorbers = [
 absorberPatches = [ax.add_patch(absorber.getPatch()) for absorber in absorbers]
 
 class Speaker:
-    def __init__(self, name, position, radius, frequency, volume, minFrequency, maxFrequency):
+    def __init__(self, name, shape, frequency, volume, minFrequency, maxFrequency):
         self.name = name
-        self.position = Position(
-            position.x + wallThickness,
-            position.y + wallThickness
-        )
-        self.radius = radius
+        self.shape = shape
         self.frequency = frequency
         self.volume = volume
         self.minFrequency = minFrequency
         self.maxFrequency = maxFrequency
         self.omega = 2 * np.pi * self.frequency
         self.currentPhase = 0
+
+        self.shape.position = Position(
+            self.shape.position.x + wallThickness,
+            self.shape.position.y + wallThickness
+        )
 
     def updateFrequency(self, frequency):
         self.frequency = frequency
@@ -243,34 +244,33 @@ class Speaker:
             return
 
         amplitude = REFERENCE_PRESSURE * (10 ** (self.volume / 20))
-        centerX = self.position.x / posStepSize
-        centerY = self.position.y / posStepSize
-        radius = self.radius / (2 * posStepSize)
-
-        startX = int(round(centerX - radius))
-        endX = int(round(centerX + radius))
-        startY = int(round(centerY - radius))
-        endY = int(round(centerY + radius))
+        discretePositions = self.shape.getDiscretePositions()
 
         self.currentPhase += self.omega * timeStepSize
         self.currentPhase %= 2 * np.pi
 
-        for y in range(startY, endY):
-            for x in range(startX, endX):
-                distance = np.sqrt((x + 0.5 - centerX) ** 2 + (y + 0.5 - centerY) ** 2)
-                if distance <= radius:
-                    pressureField[y, x] = amplitude * np.sin(self.currentPhase)
+        for x, y in discretePositions:
+            pressureField[y, x] = amplitude * np.sin(self.currentPhase)
 
     def getPatch(self):
-        centerX, centerY = self.position.x / posStepSize, self.position.y / posStepSize
-        radius = self.radius / posStepSize / 2
-        return Circle((centerX, centerY), radius, color='orange', fill=False, linewidth=2)
+        if isinstance(self.shape, RectangleShape):
+            startX, startY = self.shape.position.x / posStepSize, self.shape.position.y / posStepSize
+            width, height = self.shape.size.width / posStepSize, self.shape.size.height / posStepSize
+            return Rectangle((startX - 0.6, startY - 0.6), width, height, color='orange', fill=False, linewidth=2)
+        elif isinstance(self.shape, EllipseShape):
+            centerX, centerY = self.shape.position.x / posStepSize, self.shape.position.y / posStepSize
+            width, height = self.shape.radiusX * 2 / posStepSize, self.shape.radiusY * 2 / posStepSize
+            return Ellipse((centerX, centerY), width, height, color='orange', fill=False, linewidth=2)
+        elif isinstance(self.shape, PolygonShape):
+            absoluteVertices = self.shape.vertices + np.array([self.shape.position.x, self.shape.position.y])
+            return Polygon(absoluteVertices / posStepSize, color='orange', fill=False, linewidth=2)
+
 
 
 speakers = [
-    Speaker("Main Speaker", Position(0.5, 1.8), 0.3, frequency=33.63, volume=85.0, minFrequency=20.0, maxFrequency=20000.0),
-    Speaker("Tweeter", Position(3.0, 1.5), 0.4, frequency=33.63, volume=85.0, minFrequency=80.0, maxFrequency=20000.0),
-    Speaker("Bass", Position(4.0, 3.0), 0.2, frequency=33.63, volume=85.0, minFrequency=20.0, maxFrequency=80.0),
+    Speaker("Main Speaker", EllipseShape(Position(0.5, 1.8), 0.15, 0.15), frequency=100, volume=80.0, minFrequency=20.0, maxFrequency=20000.0),
+    Speaker("Tweeter", EllipseShape(Position(3.0, 1.5), 0.2, 0.2), frequency=1000, volume=75.0, minFrequency=80.0, maxFrequency=20000.0),
+    Speaker("Bass", EllipseShape(Position(4.0, 3.0), 0.1, 0.1), frequency=33.63, volume=85.0, minFrequency=20.0, maxFrequency=80.0),
 ]
 
 speakerNames = [speaker.name for speaker in speakers]
@@ -399,18 +399,9 @@ def createExclusionMask():
             mask[y, x] = False
 
     for speaker in speakers:
-        centerX = speaker.position.x / posStepSize
-        centerY = speaker.position.y / posStepSize
-        radius = speaker.radius / posStepSize
-        startX = int(round(centerX - radius))
-        endX = int(round(centerX + radius))
-        startY = int(round(centerY - radius))
-        endY = int(round(centerY + radius))
-        for y in range(startY, endY):
-            for x in range(startX, endX):
-                distance = np.sqrt((x + 0.5 - centerX) ** 2 + (y + 0.5 - centerY) ** 2)
-                if distance <= radius:
-                    mask[y, x] = False
+        discrete_positions = speaker.shape.getDiscretePositions()
+        for x, y in discrete_positions:
+            mask[y, x] = False
 
     return mask
 
