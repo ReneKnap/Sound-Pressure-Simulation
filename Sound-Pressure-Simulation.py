@@ -45,7 +45,6 @@ wallVelocityAbsorptionCoefficient = 0.2 # Proportion of velocity absorption (0.0
 
 animRunning = True
 simulatedTime = 0.0  # ms
-currentPhase = 0
 
 pressureHistoryDuration = 1.0 / lowestFrequency  # s
 pressureHistoryLength = int(round(round(pressureHistoryDuration / timeStepSize)))
@@ -107,8 +106,14 @@ canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.NONE, expand=False)
 canvas.get_tk_widget().pack_propagate(0)
 canvas.get_tk_widget().config(width=1000, height=750)
 
-frameControls = tk.Frame(root)
-frameControls.pack(side=tk.TOP, pady=10)
+frameMain = tk.Frame(root)
+frameMain.pack(side=tk.TOP, pady=10)
+
+frameControls = tk.Frame(frameMain)
+frameControls.pack(side=tk.TOP, pady=5)
+
+frameSlider= tk.Frame(frameMain)
+frameSlider.pack(side=tk.TOP, pady=5)
 
 class RectangleShape:
     def __init__(self, position, size):
@@ -212,7 +217,8 @@ absorbers = [
 absorberPatches = [ax.add_patch(absorber.getPatch()) for absorber in absorbers]
 
 class Speaker:
-    def __init__(self, position, radius, frequency, volume, minFrequency, maxFrequency):
+    def __init__(self, name, position, radius, frequency, volume, minFrequency, maxFrequency):
+        self.name = name
         self.position = Position(
             position.x + wallThickness,
             position.y + wallThickness
@@ -223,6 +229,7 @@ class Speaker:
         self.minFrequency = minFrequency
         self.maxFrequency = maxFrequency
         self.omega = 2 * np.pi * self.frequency
+        self.currentPhase = 0
 
     def updateFrequency(self, frequency):
         self.frequency = frequency
@@ -231,7 +238,7 @@ class Speaker:
     def updateVolume(self, volume):
         self.volume = volume
 
-    def updatePressure(self, pressureField, phase):
+    def updatePressure(self, pressureField, timeStepSize):
         if not (self.minFrequency <= self.frequency <= self.maxFrequency):
             return
 
@@ -245,11 +252,14 @@ class Speaker:
         startY = int(round(centerY - radius))
         endY = int(round(centerY + radius))
 
+        self.currentPhase += self.omega * timeStepSize
+        self.currentPhase %= 2 * np.pi
+
         for y in range(startY, endY):
             for x in range(startX, endX):
                 distance = np.sqrt((x + 0.5 - centerX) ** 2 + (y + 0.5 - centerY) ** 2)
                 if distance <= radius:
-                    pressureField[y, x] = amplitude * np.sin(phase)
+                    pressureField[y, x] = amplitude * np.sin(self.currentPhase)
 
     def getPatch(self):
         centerX, centerY = self.position.x / posStepSize, self.position.y / posStepSize
@@ -258,35 +268,15 @@ class Speaker:
 
 
 speakers = [
-    Speaker(Position(0.5, 1.8), 0.3, frequency=33.63, volume=85.0, minFrequency=20.0, maxFrequency=20000.0),
-    #Speaker(Position(3.0, 1.5), 0.4, frequency=33.63, volume=85.0, minFrequency=80.0, maxFrequency=20000.0),
-    #Speaker(Position(4.0, 3.0), 0.2, frequency=33.63, volume=85.0, minFrequency=20.0, maxFrequency=80.0),
+    Speaker("Main Speaker", Position(0.5, 1.8), 0.3, frequency=33.63, volume=85.0, minFrequency=20.0, maxFrequency=20000.0),
+    Speaker("Tweeter", Position(3.0, 1.5), 0.4, frequency=33.63, volume=85.0, minFrequency=80.0, maxFrequency=20000.0),
+    Speaker("Bass", Position(4.0, 3.0), 0.2, frequency=33.63, volume=85.0, minFrequency=20.0, maxFrequency=80.0),
 ]
 
+speakerNames = [speaker.name for speaker in speakers]
 
 speakerPatches = [ax.add_patch(speaker.getPatch()) for speaker in speakers]
 
-speakerFrequencyLabel = tk.Label(frameControls, text="Frequency (Hz)")
-speakerFrequencyLabel.pack(side=tk.LEFT, padx=5)
-
-speakerFrequencyEntry = tk.Entry(frameControls, width=8)
-speakerFrequencyEntry.insert(0, str(speakers[0].frequency))
-speakerFrequencyEntry.pack(side=tk.LEFT, padx=5)
-
-speakerFrequencySlider = tk.Scale(frameControls, from_=lowestFrequency, to=highestFrequency, orient=tk.HORIZONTAL, length=200, resolution=0.01)
-speakerFrequencySlider.set(speakers[0].frequency)
-speakerFrequencySlider.pack(side=tk.LEFT, padx=5)
-
-speakerVolumeLabel = tk.Label(frameControls, text="Volume (dB)")
-speakerVolumeLabel.pack(side=tk.LEFT, padx=5)
-
-speakerVolumeEntry = tk.Entry(frameControls, width=8)
-speakerVolumeEntry.insert(0, str(speakers[0].volume))
-speakerVolumeEntry.pack(side=tk.LEFT, padx=5)
-
-speakerVolumeSlider = tk.Scale(frameControls, from_=0, to=120, orient=tk.HORIZONTAL, length=200, resolution=0.01)
-speakerVolumeSlider.set(speakers[0].volume)
-speakerVolumeSlider.pack(side=tk.LEFT, padx=5)
 
 resetButton = tk.Button(frameControls, text="Reset", command=lambda: resetSimulation(None))
 resetButton.pack(side=tk.LEFT, padx=15)
@@ -349,18 +339,10 @@ def applyBoundaryConditions(pressureField, velocityFieldX, velocityFieldY):
     velocityFieldY[:, 0] = 0
     velocityFieldY[:, -1] = 0
 
-def updateSpeakerPressure(pressureField, phase):
-    amplitude = REFERENCE_PRESSURE * (10 ** (speakerVolume / 20))
-    radius = speakerRadius / (2 * posStepSize)
 
-    for y in range(int(round(speakerPos.y / posStepSize - (posStepSize/2)  - radius)), int(round(speakerPos.y / posStepSize - (posStepSize/2) + radius))):
-        for x in range(int(round(round(speakerPos.x / posStepSize - (posStepSize/2) - radius))), int(round(round(speakerPos.x / posStepSize - (posStepSize/2) + radius)))):
-            if 0 <= x < numDiscretePosX and 0 <= y < numDiscretePosY:
-                distance = np.sqrt((x - speakerPos.x / posStepSize - (posStepSize/2) ) ** 2 + (y - speakerPos.y / posStepSize - (posStepSize/2) ) ** 2)
-                if distance <= radius:
-                    pressureField[y, x] = amplitude * np.sin(phase)
+def updateSimulation(pressureField, velocityFieldX, velocityFieldY):
+    global simulatedTime
 
-def updateSimulation(pressureField, velocityFieldX, velocityFieldY, currentPhase):
     updatePressureHistory(pressureField)
     calcFiniteDifferenceTimeDomain(pressureField, velocityFieldX, velocityFieldY)
     applyBoundaryConditions(pressureField, velocityFieldX, velocityFieldY)
@@ -369,13 +351,8 @@ def updateSimulation(pressureField, velocityFieldX, velocityFieldY, currentPhase
         absorber.applyAbsorption(pressureField, velocityFieldX, velocityFieldY)
 
     for speaker in speakers:
-        speaker.updatePressure(pressureField, currentPhase)
-
-    reference_omega = speakers[0].omega
-    currentPhase += reference_omega * timeStepSize
-    currentPhase %= 2 * np.pi
-
-    return currentPhase
+        speaker.updatePressure(pressureField, timeStepSize)
+    simulatedTime += timeStepSize * 1000
 
 def updateDisplayedField():
     global pressure_dB_cache
@@ -485,11 +462,10 @@ def updateMarkers(pressure_dB_cache):
 
 
 def update(frame):
-    global pressureField, velocityFieldX, velocityFieldY, animRunning, currentPhase, simulatedTime
+    global pressureField, velocityFieldX, velocityFieldY, animRunning
     if animRunning:
         for _ in range(4):
-            currentPhase = updateSimulation(pressureField, velocityFieldX, velocityFieldY, currentPhase)
-            simulatedTime += timeStepSize * 1000
+            updateSimulation(pressureField, velocityFieldX, velocityFieldY)
 
         updateText(simulatedTime, pressure_dB_cache)
         updateMarkers(pressure_dB_cache)
@@ -497,10 +473,62 @@ def update(frame):
     updateDisplayedField()
     return [image] + speakerPatches + textElements + [max_dB_marker, min_dB_marker] + wallRects + absorberPatches
 
+controlAllSpeakersFlag = tk.BooleanVar(value=True)
+
+controlAllSpeakersToggle = tk.Checkbutton(frameControls, text="Control All Speakers", variable=controlAllSpeakersFlag)
+controlAllSpeakersToggle.pack(side=tk.LEFT, padx=5)
+
+selectedSpeaker = tk.StringVar()
+selectedSpeaker.set(speakerNames[0])
+
+speakerMenu = tk.OptionMenu(frameControls, selectedSpeaker, *speakerNames)
+speakerMenu.pack(side=tk.LEFT, padx=5)
+
+speakerFrequencyLabel = tk.Label(frameSlider, text="Frequency (Hz)")
+speakerFrequencyLabel.pack(side=tk.LEFT, padx=5)
+
+speakerFrequencyEntry = tk.Entry(frameSlider, width=8)
+speakerFrequencyEntry.insert(0, str(speakers[0].frequency))
+speakerFrequencyEntry.pack(side=tk.LEFT, padx=5)
+
+speakerFrequencySlider = tk.Scale(frameSlider, from_=lowestFrequency, to=highestFrequency, orient=tk.HORIZONTAL, length=200, resolution=0.01)
+speakerFrequencySlider.set(speakers[0].frequency)
+speakerFrequencySlider.pack(side=tk.LEFT, padx=5)
+
+speakerVolumeLabel = tk.Label(frameSlider, text="Volume (dB)")
+speakerVolumeLabel.pack(side=tk.LEFT, padx=5)
+
+speakerVolumeEntry = tk.Entry(frameSlider, width=8)
+speakerVolumeEntry.insert(0, str(speakers[0].volume))
+speakerVolumeEntry.pack(side=tk.LEFT, padx=5)
+
+speakerVolumeSlider = tk.Scale(frameSlider, from_=0, to=120, orient=tk.HORIZONTAL, length=200, resolution=0.01)
+speakerVolumeSlider.set(speakers[0].volume)
+speakerVolumeSlider.pack(side=tk.LEFT, padx=5)
+
+def updateSelectedSpeaker(*args):
+    if not controlAllSpeakersFlag.get():  # Nur bei Einzelsteuerung aktualisieren
+        index = speakerNames.index(selectedSpeaker.get())
+        speaker = speakers[index]
+        speakerFrequencySlider.set(speaker.frequency)
+        speakerVolumeSlider.set(speaker.volume)
+        speakerFrequencyEntry.delete(0, tk.END)
+        speakerFrequencyEntry.insert(0, str(speaker.frequency))
+        speakerVolumeEntry.delete(0, tk.END)
+        speakerVolumeEntry.insert(0, str(speaker.volume))
+
+selectedSpeaker.trace_add("write", updateSelectedSpeaker)
+
+
 def updateFrequency(event):
     newFrequency = float(speakerFrequencySlider.get())
-    for speaker in speakers:
-        speaker.updateFrequency(newFrequency)
+    if controlAllSpeakersFlag.get():
+        for speaker in speakers:
+            speaker.updateFrequency(newFrequency)
+    else:
+        index = speakerNames.index(selectedSpeaker.get())
+        speakers[index].updateFrequency(newFrequency)
+
     speakerFrequencyEntry.delete(0, tk.END)
     speakerFrequencyEntry.insert(0, str(newFrequency))
 
@@ -514,11 +542,16 @@ def updateFrequencyFromEntry(event):
         pass
 
 def updateVolume(event):
-    for speaker in speakers:
-        speaker.updateVolume(float(speakerVolumeSlider.get()))
-    
+    newVolume = float(speakerVolumeSlider.get())
+    if controlAllSpeakersFlag.get():
+        for speaker in speakers:
+            speaker.updateVolume(newVolume)
+    else:
+        index = speakerNames.index(selectedSpeaker.get())
+        speakers[index].updateVolume(newVolume)
+
     speakerVolumeEntry.delete(0, tk.END)
-    speakerVolumeEntry.insert(0, str(speakerVolumeSlider.get()))
+    speakerVolumeEntry.insert(0, str(newVolume))
 
 
 def updateVolumeFromEntry(event):
@@ -550,6 +583,8 @@ speakerFrequencySlider.config(command=updateFrequency)
 speakerVolumeSlider.config(command=updateVolume)
 speakerFrequencyEntry.bind("<Return>", updateFrequencyFromEntry)
 speakerVolumeEntry.bind("<Return>", updateVolumeFromEntry)
+
+updateSelectedSpeaker()
 
 animation = FuncAnimation(fig, update, blit=True, interval=1, cache_frame_data=False)
 
