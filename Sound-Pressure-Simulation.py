@@ -47,7 +47,7 @@ animRunning = True
 simulatedTime = 0.0  # ms
 timeSkip = 4
 
-pressureHistoryDuration = 1.0 / lowestFrequency  # s
+pressureHistoryDuration = 1.0 / lowestFrequency # s
 pressureHistoryLength = int(round(round(pressureHistoryDuration / timeStepSize)))
 pressureHistory = [np.zeros((numDiscretePosY, numDiscretePosX)) for _ in range(pressureHistoryLength)]
 pressureIndex = 0
@@ -250,8 +250,14 @@ class Speaker:
         amplitude = REFERENCE_PRESSURE * (10 ** (self.volume / 20))
         discretePositions = self.shape.getDiscretePositions()
 
+        previousPhase = self.currentPhase
         self.currentPhase += self.omega * timeStepSize
         self.currentPhase %= 2 * np.pi
+
+        # Instead of giving the speakers a fixed pressure, you should leave the possibility of superimposition by adding only the difference. In this case, however, the volume is too low if you calculate it this way.
+        #pressure_change = amplitude * np.sin(self.currentPhase) - amplitude * np.sin(previousPhase)
+        #for x, y in discretePositions:
+            #pressureField[y, x] += pressure_change
 
         for x, y in discretePositions:
             pressureField[y, x] = amplitude * np.sin(self.currentPhase)
@@ -273,8 +279,8 @@ class Speaker:
 
 speakers = [
     Speaker("Main Speaker", EllipseShape(Position(0.5, 1.8), 0.15, 0.15), frequency=100, volume=80.0, minFrequency=20.0, maxFrequency=20000.0),
-    Speaker("Tweeter", EllipseShape(Position(3.0, 1.5), 0.2, 0.2), frequency=1000, volume=75.0, minFrequency=80.0, maxFrequency=20000.0),
-    Speaker("Bass", EllipseShape(Position(4.0, 3.0), 0.1, 0.1), frequency=33.63, volume=85.0, minFrequency=20.0, maxFrequency=80.0),
+    #Speaker("Tweeter", EllipseShape(Position(3.0, 1.5), 0.2, 0.2), frequency=1000, volume=75.0, minFrequency=80.0, maxFrequency=20000.0),
+    #Speaker("Bass", EllipseShape(Position(4.0, 3.0), 0.1, 0.1), frequency=33.63, volume=85.0, minFrequency=20.0, maxFrequency=80.0),
 ]
 
 speakerNames = [speaker.name for speaker in speakers]
@@ -302,6 +308,8 @@ def updatePressureHistory(pressureField):
 
 def calcPressure_dB():
     pressureHistoryNp = np.array(pressureHistory) 
+    #  The textbook method is to calculate the rms pressure to calculate the dB over two periods of the lowest expected frequency. With rms the volume is underestimated by 10%, therefore the substitute calculation with min and max value is used which works in this controlled environment.
+    # rmsPressure = np.sqrt(np.mean(pressureHistoryNp**2, axis=0))
     maxPressure = np.amax(pressureHistoryNp, axis=0)
     minPressure = np.amin(pressureHistoryNp, axis=0)
     difPressure = abs(maxPressure - minPressure)/2
@@ -411,12 +419,16 @@ def createExclusionMask():
 
 exclusion_mask = createExclusionMask()
 
+lighterPurple = (0.86, 0.44, 0.84)
+
 textElements = [
-    ax.text(0.05, 0.99, '', transform=ax.transAxes, color='white', fontsize=12, weight='bold', va='top'),  # time
-    ax.text(0.35, 0.99, '', transform=ax.transAxes, color=(0.3, 0.5, 1), fontsize=12, weight='bold', va='top'),  # max
-    ax.text(0.43, 0.99, '', transform=ax.transAxes, color='white', fontsize=12, weight='bold', va='top'),  # maxValue
-    ax.text(0.62, 0.99, '', transform=ax.transAxes, color='red', fontsize=12, weight='bold', va='top'),  # min
-    ax.text(0.69, 0.99, '', transform=ax.transAxes, color='white', fontsize=12, weight='bold', va='top')  # minValue
+    ax.text(0.01, 0.99, '', transform=ax.transAxes, color='white', fontsize=12, weight='bold', va='top'),  # time
+    ax.text(0.29, 0.99, '', transform=ax.transAxes, color=(0.3, 0.5, 1), fontsize=12, weight='bold', va='top'),  # max
+    ax.text(0.37, 0.99, '', transform=ax.transAxes, color='white', fontsize=12, weight='bold', va='top'),  # maxValue
+    ax.text(0.54, 0.99, '', transform=ax.transAxes, color='red', fontsize=12, weight='bold', va='top'),  # min
+    ax.text(0.61, 0.99, '', transform=ax.transAxes, color='white', fontsize=12, weight='bold', va='top'),  # minValue
+    ax.text(0.77, 0.99, '', transform=ax.transAxes, color=lighterPurple, fontsize=12, weight='bold', va='top'),  # mic dB
+    ax.text(0.84, 0.99, '', transform=ax.transAxes, color='white', fontsize=12, weight='bold', va='top'),  # mic dB Value
 ]
 
 
@@ -426,17 +438,32 @@ def updateText(simulatedTime, pressure_dB_cache):
         max_dB = np.max(np.where(exclusion_mask, pressure_dB_cache, -np.inf))
         min_dB = np.min(np.where(exclusion_mask, pressure_dB_cache, np.inf))
 
+        centerMicX = int(round(micX.get() / posStepSize))
+        centerMicY = int(round(micY.get() / posStepSize))
+        centerMicX = np.clip(centerMicX, 0, numDiscretePosX - 1)
+        centerMicY = np.clip(centerMicY, 0, numDiscretePosY - 1)
+
+        mic_dB = pressure_dB_cache[centerMicY, centerMicX]
+
+        max_dB = max(max_dB, 0)
+        min_dB = max(min_dB, 0)
+        mic_dB = max(mic_dB, 0)
+
         textElements[0].set_text(f'Time: {simulatedTime:2.2f} ms, ')
         textElements[1].set_text('Max: ')
         textElements[2].set_text(f'{max_dB:2.2f} dB, ')
         textElements[3].set_text('Min: ')
-        textElements[4].set_text(f'{min_dB:2.2f} dB')
+        textElements[4].set_text(f'{min_dB:2.2f} dB, ')
+        textElements[5].set_text('Mic: ')
+        textElements[6].set_text(f'{mic_dB:2.2f} dB')
     else:
         textElements[0].set_text(f'Time: {simulatedTime:2.2f} ms')
         textElements[1].set_text('')
         textElements[2].set_text('')
         textElements[3].set_text('')
         textElements[4].set_text('')
+        textElements[5].set_text('')
+        textElements[6].set_text('')
 
 def updateMarkers(pressure_dB_cache):
     selectedField = fieldTarget.get()
@@ -475,7 +502,7 @@ pressureDataSpeaker = [0] * 1000
 pressureDataMic = [0] * 1000
 micOffsetInSteps = 0
 lineSpeaker, = ax2.plot(timeData, pressureDataSpeaker, lw=2, label="Speaker")
-lineMic, = ax2.plot(timeData, pressureDataMic, lw=2, color='red', label="Microphone")
+lineMic, = ax2.plot(timeData, pressureDataMic, lw=2, color=lighterPurple, label="Microphone")
 
 
 def onMicPositionChange(*args):
@@ -507,7 +534,7 @@ micX.trace_add("write", onMicPositionChange)
 micY.trace_add("write", onMicPositionChange)
 micOffset.trace_add("write", lambda *args: applyMicOffset())
 
-micMarker = Circle((micX.get() / posStepSize, micY.get() / posStepSize), radius=1, color='red', fill=False)
+micMarker = Circle((micX.get() / posStepSize, micY.get() / posStepSize), radius=1, color=lighterPurple, fill=False)
 ax.add_patch(micMarker)
 
 def updateMicMarker():
