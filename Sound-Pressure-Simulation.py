@@ -83,7 +83,11 @@ yLabels = np.round(yTicks * posStepSize, 1)
 ax.set_yticks(yTicks)
 ax.set_yticklabels(yLabels)
 
+lighterPurpleMicColor = (0.86, 0.44, 0.84)
+defaultSpeakerColor = 'orange'
+selectedSpeakerColor = 'blue'
 wallColor = 'gray'
+
 wallRects = [
     Rectangle((-0.2, -0.2), wallThickness/posStepSize-0.4, numDiscretePosY-1+0.4, color=wallColor, fill=False, linewidth=2, hatch='////'),
     Rectangle((numDiscretePosX-wallThickness/posStepSize-1+0.4, -0.2), wallThickness/posStepSize-0.2, numDiscretePosY-1+0.4, color=wallColor, fill=False, linewidth=2, hatch='////'),
@@ -221,7 +225,7 @@ absorbers = [
 absorberPatches = [ax.add_patch(absorber.getPatch()) for absorber in absorbers]
 
 class Speaker:
-    def __init__(self, name, shape, frequency, volume, minFrequency, maxFrequency):
+    def __init__(self, name, shape, frequency, volume, minFrequency, maxFrequency, color=defaultSpeakerColor):
         self.name = name
         self.shape = shape
         self.frequency = frequency
@@ -230,6 +234,7 @@ class Speaker:
         self.maxFrequency = maxFrequency
         self.omega = 2 * np.pi * self.frequency
         self.currentPhase = 0
+        self.color = color
 
         self.shape.position = Position(
             self.shape.position.x + wallThickness,
@@ -266,20 +271,23 @@ class Speaker:
         if isinstance(self.shape, RectangleShape):
             startX, startY = self.shape.position.x / posStepSize, self.shape.position.y / posStepSize
             width, height = self.shape.size.width / posStepSize, self.shape.size.height / posStepSize
-            return Rectangle((startX - 0.6, startY - 0.6), width, height, color='orange', fill=False, linewidth=2)
+            return Rectangle((startX - 0.6, startY - 0.6), width, height, color=self.color, fill=False, linewidth=2)
         elif isinstance(self.shape, EllipseShape):
             centerX, centerY = self.shape.position.x / posStepSize, self.shape.position.y / posStepSize
             width, height = self.shape.radiusX * 2 / posStepSize, self.shape.radiusY * 2 / posStepSize
-            return Ellipse((centerX, centerY), width, height, color='orange', fill=False, linewidth=2)
+            return Ellipse((centerX, centerY), width, height, color=self.color, fill=False, linewidth=2)
         elif isinstance(self.shape, PolygonShape):
             absoluteVertices = self.shape.vertices + np.array([self.shape.position.x, self.shape.position.y])
-            return Polygon(absoluteVertices / posStepSize, color='orange', fill=False, linewidth=2)
+            return Polygon(absoluteVertices / posStepSize, color=self.color, fill=False, linewidth=2)
+
+    def updateColor(self, newColor):
+        self.color = newColor
 
 
 
 speakers = [
     Speaker("Main Speaker", EllipseShape(Position(0.5, 1.8), 0.15, 0.15), frequency=100, volume=80.0, minFrequency=20.0, maxFrequency=20000.0),
-    #Speaker("Tweeter", EllipseShape(Position(3.0, 1.5), 0.2, 0.2), frequency=1000, volume=75.0, minFrequency=80.0, maxFrequency=20000.0),
+    Speaker("Tweeter", EllipseShape(Position(3.0, 1.5), 0.2, 0.2), frequency=1000, volume=75.0, minFrequency=80.0, maxFrequency=20000.0),
     #Speaker("Bass", EllipseShape(Position(4.0, 3.0), 0.1, 0.1), frequency=33.63, volume=85.0, minFrequency=20.0, maxFrequency=80.0),
 ]
 
@@ -419,7 +427,6 @@ def createExclusionMask():
 
 exclusion_mask = createExclusionMask()
 
-lighterPurple = (0.86, 0.44, 0.84)
 
 textElements = [
     ax.text(0.01, 0.99, '', transform=ax.transAxes, color='white', fontsize=12, weight='bold', va='top'),  # time
@@ -427,7 +434,7 @@ textElements = [
     ax.text(0.37, 0.99, '', transform=ax.transAxes, color='white', fontsize=12, weight='bold', va='top'),  # maxValue
     ax.text(0.54, 0.99, '', transform=ax.transAxes, color='red', fontsize=12, weight='bold', va='top'),  # min
     ax.text(0.61, 0.99, '', transform=ax.transAxes, color='white', fontsize=12, weight='bold', va='top'),  # minValue
-    ax.text(0.77, 0.99, '', transform=ax.transAxes, color=lighterPurple, fontsize=12, weight='bold', va='top'),  # mic dB
+    ax.text(0.77, 0.99, '', transform=ax.transAxes, color=lighterPurpleMicColor, fontsize=12, weight='bold', va='top'),  # mic dB
     ax.text(0.84, 0.99, '', transform=ax.transAxes, color='white', fontsize=12, weight='bold', va='top'),  # mic dB Value
 ]
 
@@ -501,8 +508,8 @@ timeData = np.linspace(ax2_xMin, ax2_xMax, 1000)
 pressureDataSpeaker = [0] * 1000
 pressureDataMic = [0] * 1000
 micOffsetInSteps = 0
-lineSpeaker, = ax2.plot(timeData, pressureDataSpeaker, lw=2, label="Speaker")
-lineMic, = ax2.plot(timeData, pressureDataMic, lw=2, color=lighterPurple, label="Microphone")
+lineSpeaker, = ax2.plot(timeData, pressureDataSpeaker, lw=2, color=selectedSpeakerColor, label="Speaker")
+lineMic, = ax2.plot(timeData, pressureDataMic, lw=2, color=lighterPurpleMicColor, label="Microphone")
 
 
 def onMicPositionChange(*args):
@@ -534,7 +541,7 @@ micX.trace_add("write", onMicPositionChange)
 micY.trace_add("write", onMicPositionChange)
 micOffset.trace_add("write", lambda *args: applyMicOffset())
 
-micMarker = Circle((micX.get() / posStepSize, micY.get() / posStepSize), radius=1, color=lighterPurple, fill=False)
+micMarker = Circle((micX.get() / posStepSize, micY.get() / posStepSize), radius=1, color=lighterPurpleMicColor, fill=False, linewidth=2)
 ax.add_patch(micMarker)
 
 def updateMicMarker():
@@ -652,6 +659,18 @@ toggleSpeakerMenu()
 
 
 def updateSelectedSpeaker(*args):
+    global speakerPatches
+
+    for speaker in speakers:
+        speaker.updateColor(defaultSpeakerColor)
+
+    index = speakerNames.index(selectedSpeaker.get())
+    speakers[index].updateColor(selectedSpeakerColor)
+
+    for patch in speakerPatches:
+        patch.remove()
+    speakerPatches = [ax.add_patch(speaker.getPatch()) for speaker in speakers]
+
     if controlIndividualSpeakersFlag.get():
         index = speakerNames.index(selectedSpeaker.get())
         speaker = speakers[index]
@@ -663,6 +682,7 @@ def updateSelectedSpeaker(*args):
         speakerVolumeEntry.insert(0, str(speaker.volume))
 
 selectedSpeaker.trace_add("write", updateSelectedSpeaker)
+
 
 def updateFrequency(event):
     newFrequency = float(speakerFrequencySlider.get())
