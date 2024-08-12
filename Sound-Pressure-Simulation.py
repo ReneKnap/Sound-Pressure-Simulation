@@ -8,6 +8,8 @@ import tkinter as tk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from typing import NamedTuple
 from matplotlib.colors import Normalize
+from scipy.fft import fft, fftfreq
+from scipy.interpolate import interp1d
 
 class Position(NamedTuple):
     x: float
@@ -287,7 +289,7 @@ class Speaker:
 
 speakers = [
     Speaker("Main Speaker", EllipseShape(Position(0.5, 1.8), 0.15, 0.15), frequency=100, volume=80.0, minFrequency=20.0, maxFrequency=20000.0),
-    Speaker("Tweeter", EllipseShape(Position(3.0, 1.5), 0.2, 0.2), frequency=1000, volume=75.0, minFrequency=80.0, maxFrequency=20000.0),
+    #Speaker("Tweeter", EllipseShape(Position(3.0, 1.5), 0.2, 0.2), frequency=1000, volume=75.0, minFrequency=80.0, maxFrequency=20000.0),
     #Speaker("Bass", EllipseShape(Position(4.0, 3.0), 0.1, 0.1), frequency=33.63, volume=85.0, minFrequency=20.0, maxFrequency=80.0),
 ]
 
@@ -521,6 +523,9 @@ def validatePositiveOffset(value_if_allowed):
             return True
     return False
 
+
+dbAnalyseButton = tk.Button(frameControls, text="Freq Analyse", command=lambda: performDBAnalyse())
+dbAnalyseButton.pack(side=tk.LEFT, padx=15)
 micX = tk.DoubleVar(value=1.2 + wallThickness)
 micY = tk.DoubleVar(value=1.8 + wallThickness)
 micOffset = tk.DoubleVar(value=0.0)
@@ -543,6 +548,57 @@ micOffset.trace_add("write", lambda *args: applyMicOffset())
 
 micMarker = Circle((micX.get() / posStepSize, micY.get() / posStepSize), radius=1, color=lighterPurpleMicColor, fill=False, linewidth=2)
 ax.add_patch(micMarker)
+
+def performDBAnalyse():
+    if animRunning:
+        toggleSimulation(None)
+
+    centerMicX = int(round(micX.get() / posStepSize))
+    centerMicY = int(round(micY.get() / posStepSize))
+    centerMicX = np.clip(centerMicX, 0, numDiscretePosX - 1)
+    centerMicY = np.clip(centerMicY, 0, numDiscretePosY - 1)
+
+    pressureAtMic = np.array([history[centerMicY, centerMicX] for history in pressureHistory])
+
+    N = len(pressureAtMic)
+    T = timeStepSize
+    yf = fft(pressureAtMic)
+    xf = fftfreq(N, T)[:N//2]
+    amplitudes = 2.0 / N * np.abs(yf[:N//2])
+
+    logFreqs = np.logspace(np.log10(lowestFrequency), np.log10(20000), num=200)
+    interpFunc = interp1d(xf, amplitudes, kind='linear', bounds_error=False, fill_value=0)
+    logAmplitudes = interpFunc(logFreqs)
+
+    pressure_dB = 20 * np.log10(logAmplitudes / REFERENCE_PRESSURE + 1e-12)
+    
+    analysisWindow = tk.Toplevel()
+    analysisWindow.title("Frequency analysis")
+    analysisWindow.geometry("1000x800")
+
+    fig = plt.Figure(figsize=(10, 8), dpi=100)
+    ax = fig.add_subplot(111)
+    ax.bar(logFreqs, pressure_dB, width=np.diff(logFreqs, append=logFreqs[-1]), align='center', log=True)
+    ax.set_xscale('log')
+    ax.set_xlabel('Frequency (Hz)')
+    ax.set_ylabel('Volume (dB)')
+    ax.set_title('Frequency analysis')
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5)
+
+    ax.set_xticks([20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000])
+    ax.get_xaxis().set_major_formatter(plt.ScalarFormatter())
+    ax.set_yscale('linear')
+    ax.set_ylim(10, 90)
+
+    fig.tight_layout()
+
+    canvas = FigureCanvasTkAgg(fig, master=analysisWindow)
+    canvas.draw()
+    canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+
+    analysisWindow.update_idletasks()
+
+
 
 def updateMicMarker():
     try:
@@ -728,12 +784,12 @@ def updateVolumeFromEntry(event):
         pass
 
 def resetSimulation(event):
-    global pressureField, velocityFieldX, velocityFieldY, currentPhase, pressureDataMic, pressureDataSpeaker
+    global pressureField, velocityFieldX, velocityFieldY, simulatedTime, pressureDataMic, pressureDataSpeaker, pressureHistory, pressureIndex
+
    
     pressureField = np.zeros((numDiscretePosY, numDiscretePosX))
     velocityFieldX = np.zeros((numDiscretePosY, numDiscretePosX))
     velocityFieldY = np.zeros((numDiscretePosY, numDiscretePosX))
-    currentPhase = 0
     simulatedTime = 0.0
 
     pressureDataMic = [0] * 1000
@@ -741,6 +797,12 @@ def resetSimulation(event):
     lineSpeaker.set_ydata(pressureDataSpeaker)
     lineMic.set_ydata(pressureDataMic)
     canvas2.draw_idle()
+
+    for speaker in speakers:
+        speaker.currentPhase = 0
+
+    pressureHistory = [np.zeros((numDiscretePosY, numDiscretePosX)) for _ in range(pressureHistoryLength)]
+    pressureIndex = 0
 
 def toggleSimulation(event):
     global animRunning
