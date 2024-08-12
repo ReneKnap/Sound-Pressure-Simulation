@@ -5,11 +5,13 @@ from matplotlib.widgets import Slider, Button
 from matplotlib.patches import Circle, Rectangle, Ellipse, Polygon
 from matplotlib.path import Path as mplPath
 import tkinter as tk
+from tkinter import ttk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from typing import NamedTuple
 from matplotlib.colors import Normalize
 from scipy.fft import fft, fftfreq
 from scipy.interpolate import interp1d
+import threading
 
 class Position(NamedTuple):
     x: float
@@ -298,10 +300,10 @@ speakerNames = [speaker.name for speaker in speakers]
 speakerPatches = [ax.add_patch(speaker.getPatch()) for speaker in speakers]
 
 
-resetButton = tk.Button(frameControls, text="Reset", command=lambda: resetSimulation(None))
+resetButton = tk.Button(frameSlider, text="Reset", command=lambda: resetSimulation(None))
 resetButton.pack(side=tk.LEFT, padx=15)
 
-stopButton = tk.Button(frameControls, text="Stop", command=lambda: toggleSimulation(None))
+stopButton = tk.Button(frameSlider, text="Stop", command=lambda: toggleSimulation(None))
 stopButton.pack(side=tk.LEFT, padx=15)
 
 fieldTarget = tk.StringVar(root)
@@ -526,6 +528,8 @@ def validatePositiveOffset(value_if_allowed):
 
 dbAnalyseButton = tk.Button(frameControls, text="Freq Analyse", command=lambda: performDBAnalyse())
 dbAnalyseButton.pack(side=tk.LEFT, padx=15)
+responseAnalyseButton = tk.Button(frameControls, text="Response Analyse", command=lambda: performFrequencyResponseAnalysis())
+responseAnalyseButton.pack(side=tk.LEFT, padx=15)
 micX = tk.DoubleVar(value=1.2 + wallThickness)
 micY = tk.DoubleVar(value=1.8 + wallThickness)
 micOffset = tk.DoubleVar(value=0.0)
@@ -597,6 +601,84 @@ def performDBAnalyse():
     canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
     analysisWindow.update_idletasks()
+
+def performFrequencyResponseAnalysis():
+    startFrequency = 20.0  
+    endFrequency = 2000.0  
+    numSteps = 200
+    duration = 0.15
+
+    def runAnalysis():
+        frequencies = np.logspace(np.log10(startFrequency), np.log10(endFrequency), numSteps)
+        responses = []
+
+        originalVolume = speakers[0].volume
+        originalFrequency = speakers[0].frequency
+
+        centerMicX = int(round(micX.get() / posStepSize))
+        centerMicY = int(round(micY.get() / posStepSize))
+        centerMicX = np.clip(centerMicX, 0, numDiscretePosX - 1)
+        centerMicY = np.clip(centerMicY, 0, numDiscretePosY - 1)
+
+        for i, freq in enumerate(frequencies):
+            resetSimulation(None)
+            speakers[0].updateFrequency(freq)
+            for _ in range(int(duration / timeStepSize)):
+                updateSimulation(pressureField, velocityFieldX, velocityFieldY)
+
+            pressure_dB_cache = calcPressure_dB()
+            mic_dB = pressure_dB_cache[centerMicY, centerMicX]
+            responses.append(mic_dB)
+
+            progress['value'] = i + 1
+            progressWindow.update_idletasks()
+
+        resetSimulation(None)
+        progressWindow.destroy()
+    
+        speakers[0].updateVolume(originalVolume)
+        speakers[0].updateFrequency(originalFrequency)
+    
+        analysisWindow = tk.Toplevel()
+        analysisWindow.title("Frequency Response Analysis")
+        analysisWindow.geometry("1000x800")
+    
+        fig = plt.Figure(figsize=(10, 8), dpi=100)
+        ax = fig.add_subplot(111)
+        ax.plot(frequencies, responses, marker='o', linestyle='-', color='blue')
+        ax.set_xscale('log')
+        ax.set_ylim(10, 90)
+        ax.set_yscale('linear')
+        ax.set_xticks([20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000])
+        ax.get_xaxis().set_major_formatter(plt.ScalarFormatter())
+        ax.set_xlim([startFrequency, endFrequency])
+        ax.set_xlabel('Frequency (Hz)')
+        ax.set_ylabel('Volume (dB)')
+        ax.set_title('Frequency Response Analysis')
+        ax.grid(True, which='both', linestyle='--', linewidth=0.5)
+    
+        fig.tight_layout()
+    
+        canvas = FigureCanvasTkAgg(fig, master=analysisWindow)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+    
+        analysisWindow.update_idletasks()
+
+    if animRunning:
+        toggleSimulation(None)
+
+    progressWindow = tk.Toplevel()
+    progressWindow.title("Progress")
+    progressWindow.geometry("300x100")
+    progressLabel = tk.Label(progressWindow, text="Performing Frequency Response Analysis...")
+    progressLabel.pack(pady=10)
+
+    progress = ttk.Progressbar(progressWindow, orient=tk.HORIZONTAL, length=250, mode='determinate', maximum=numSteps)
+    progress.pack(pady=10)
+
+    analysisThread = threading.Thread(target=runAnalysis)
+    analysisThread.start()
 
 
 
