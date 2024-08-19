@@ -400,6 +400,8 @@ class Speaker:
     def updatePressure(self, pressureField, timeStepSize):
         if not (self.minFrequency <= self.frequency <= self.maxFrequency):
             return
+        if self.volume == 0:
+            return
 
         amplitude = REFERENCE_PRESSURE * (10 ** (self.volume / 20))
 
